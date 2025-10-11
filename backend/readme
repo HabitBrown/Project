@@ -15,12 +15,16 @@ cd D:\Project\backend
 python -m venv venv
 .\venv\Scripts\activate.bat
 pip install -r requirements.txt
+pip install "fastapi[all]" uvicorn sqlalchemy passlib[bcrypt] python-jose[cryptography] pydantic-settings
+
 
 macOS / Linux
 cd ./backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install "fastapi[all]" uvicorn sqlalchemy passlib[bcrypt] python-jose[cryptography] pydantic-settings
+
 
 DB 연결 설정
 
