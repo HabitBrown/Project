@@ -1,0 +1,61 @@
+1. user.py
+
+User : 회원 정보 (전화번호, 닉네임, 성별, 나이, HB 잔액 등)
+Interest : 관심사 카테고리 목록 (예: 운동, 독서)
+UserInterest : 유저 ↔ 관심사 매핑 테이블 (다대다 관계)
+Follow : 팔로우/팔로잉 관계 저장
+
+2. habit.py
+
+Habit : 습관의 원형(템플릿).
+사용자가 처음 습관을 만들 때 저장되는 기본 정의 (제목, 설명).
+다른 유저가 교환을 통해 가져가면 여기서 파생됨.
+
+3. user_habit.py
+UserHabit : 실제 유저가 수행하는 습관.
+Habit 을 기반으로 하되 기간, 요일, 인증 방식, 마감 시간, 활성 여부를 개별로 가짐.
+유저별 “오늘 해야 할 습관”을 보여줄 때 사용하는 핵심 테이블.
+
+4. exchange.py
+ExchangeRequest : 다른 사람의 습관을 보고 “갖고 싶다” → 도전장 발송할 때 기록.
+상태값: pending / accepted / rejected / canceled.
+승리 시 습관 이름이 내 UserHabit 목록에 추가됨.
+
+5. duel.py
+Duel : 두 사용자가 같은 습관으로 대결하는 1:1 매치.
+누가 도전했는지, 기간은 언제부터 언제까지인지, 결과(승/패/무승부/포기)를 저장.
+각자의 성공 횟수(owner_success_cnt, challenger_success_cnt)를 기록.
+
+6. media.py
+MediaAsset : 사진 파일 메타데이터 저장소.
+사진 경로(URL), 촬영 시각(EXIF), 해시(sha256) 저장 → 치팅 방지용.
+인증(Certification)과 연결됨.
+
+7. certification.py
+Certification : 습관 인증 결과 저장.
+언제, 어떤 방식(사진/글)으로 인증했는지 기록.
+사진이면 MediaAsset과 연결, 텍스트면 자유 입력.
+상태: 성공 / 실패.
+
+8. dispute.py
+Dispute : 인증에 대한 이의제기.
+“사진이 이상하다”, “성공인데 실패로 처리됐다” 같은 문제 제기.
+상대방이 수락하면 정정, 응답 없으면 24시간 후 자동 기각.
+
+9. wallet.py
+WalletTransaction : HB(코인) 원장.
+습관 성공/대결 승리 시 HB 추가, 포기 시 차감.
+모든 거래 내역을 남겨서 레벨 계산, 상점 구매 등에 활용.
+
+10. notification.py
+Notification : 앱 내 알림 + 푸시 알림 기록.
+유형: 도전장, 인증 성공/실패, 이의제기, 시스템 메시지 등.
+읽음 여부(is_read) 포함.
+
+11. badge.py
+Badge : 앱에서 제공하는 배지 정의 (예: “3일 연속 성공”, “10승 달성”).
+UserBadge : 유저가 획득한 배지 기록.
+
+12. shop.py
+ShopItem : HB로 구매 가능한 상점 아이템 정의 (더미).
+Order : 유저가 상점에서 아이템 구매한 내역.

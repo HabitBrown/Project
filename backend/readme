@@ -1,0 +1,44 @@
+1. MySQL 8.x 설치 (Windows: MySQL Installer).
+2. 설치 중 root 비밀번호 설정 (기억해두세요).
+3. 설치 완료 후 MySQL 접속: mysql -u root -p
+4. db 생성 :CREATE DATABASE hashbrown CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+5.가상환경
+Windows (PowerShell)
+cd D:\Project\backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+Windows (CMD)
+cd D:\Project\backend
+python -m venv venv
+.\venv\Scripts\activate.bat
+pip install -r requirements.txt
+pip install "fastapi[all]" uvicorn sqlalchemy passlib[bcrypt] python-jose[cryptography] pydantic-settings
+
+
+macOS / Linux
+cd ./backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install "fastapi[all]" uvicorn sqlalchemy passlib[bcrypt] python-jose[cryptography] pydantic-settings
+
+
+DB 연결 설정
+
+app/database.py에서
+DB_URL = os.getenv(
+    "HASHBROWN_DB_URL",
+    "mysql+pymysql://root:비밀번호입력@localhost:3306/hashbrown?charset=utf8mb4"
+)
+
+
+테이블 생성
+cd backend
+python -m app.create_db
+
+MySQL에서 확인:
+USE hashbrown;
+SHOW TABLES;

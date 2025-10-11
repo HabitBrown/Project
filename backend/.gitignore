@@ -1,0 +1,89 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtualenv
+venv/
+.venv/
+ENV/
+env/
+pip-wheel-metadata/
+
+# Build / Dist / Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+.wheelhouse/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checking / Lint
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+ruff_cache/
+
+# Logs / Temp
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# IDE / Editors
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# dotenv / Secrets
+.env
+*.env
+.env.*
+.envrc
+
+# Local settings / cache
+.cache/
+.ipynb_checkpoints/
+
+# SQLAlchemy / Alembic (if later added)
+alembic.ini
+alembic/versions/__pycache__/
+
+# Images / uploads (if any local dev storage)
+uploads/
+media/
+staticfiles/
+
+# Node (만약 프론트/툴 추가 시)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# PyInstaller
+*.manifest
+*.spec
+
+# SQLite (혹시 로컬 테스트 시)
+*.sqlite3
+*.db
+
+# VSCode Python settings caches
+.pyright/
