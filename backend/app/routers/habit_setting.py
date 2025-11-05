@@ -17,6 +17,8 @@ class Habit(object):
         self._is_active = is_active or True
         self.created_at = created_at
 
+        # self.created_at = datetime.now().strftime("%Y%m%d")
+
     def setting_habit(self):
         user_habit = UserHabit(
             user_id = self._uid,
