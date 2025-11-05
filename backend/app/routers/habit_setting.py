@@ -5,7 +5,7 @@ from backend.app.models.user_habit import UserHabit
 from datetime import datetime, date, time
 
 class Habit(object):
-    def __init__(self, uid: int, habit_id: Optional[int], title: str, method: str, deadline: time, days_of_week: int, period_start: date, period_end: date, is_active: bool, created_at: datetime):
+    def __init__(self, uid: int, habit_id: Optional[int], title: str, method: str, deadline: time, days_of_week: int, period_start: date, period_end: date, is_active: bool):
         self._uid = uid
         self._habit_id = habit_id
         self._title = title
@@ -15,9 +15,9 @@ class Habit(object):
         self._period_start = period_start
         self._period_end = period_end
         self._is_active = is_active or True
-        self.created_at = created_at
 
-        # self.created_at = datetime.now().strftime("%Y%m%d")
+        # 생성일은 자동으로 처리
+        self.created_at = datetime.now().strftime("%Y%m%d")
 
     def setting_habit(self):
         user_habit = UserHabit(
