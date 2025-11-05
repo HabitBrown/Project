@@ -46,32 +46,3 @@ class Register(object):
                 raise ValueError("에러") from e
             db.refresh(user)
             return user
-
-
-        # con = cs.connect_sql("", "", "", "")
-        # cur = con.cursor()
-
-        # try:
-        #     # 만약 신규 가입이라면 INSERT를 진행하고,
-        #     query = f"""INSERT INTO
-        #     User(phone, password_hash, nickname, gender, age, bio,
-        #     profile_picture, hb_balance, created_at)
-        #     VALUES({self._phone}, {self._password}, {self._nickname}, {self._gender},
-        #     {self._age}, {self._bio}, {self._profile_picture}, {self._hb_balance}, {self._created_at})"""
-        #
-        # except:
-        #     # uid를 기준으로 찾아서 수정, 재화/생성일은 수정할 필요가 없으므로 넣지 않음.
-        #     temp = "유저 아이디"
-        #     query = f"""UPDATE User SET
-        #     phone = {self._phone},
-        #     password_hash = {self._password},
-        #     nickname = {self._nickname},
-        #     gender = {self._gender},
-        #     age = {self._age},
-        #     bio = {self._bio},
-        #     profile_picture = {self._profile_picture}
-        #     WHERE id = {temp}"""
-
-        cur.execute(query)
-        con.commit()
-        con.close()
