@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/auth_service.dart';
 
 /// =======================
 /// Config: 색/치수/에셋 경로
@@ -51,6 +53,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   bool _autoValidate = false; // 로그인 시도 후 자동 검증 켜기
 
+  final _auth = AuthService();
+  bool _loading = false;
+
   @override
   void dispose() {
     _phoneC.dispose();
@@ -69,23 +74,38 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _validatePassword(String? v) {
     final s = (v ?? '');
     if (s.isEmpty) return '비밀번호를 입력하세요';
-    if (s.length < 6) return '비밀번호는 6자리 이상';
+    if (s.length < 8) return '비밀번호는 8자리 이상';
     return null;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     setState(() => _autoValidate = true);
     final ok = _formKey.currentState!.validate();
-    if (!ok) return;
+    if (!ok || _loading) return;
 
-    // TODO: 실제 로그인 API
-    Navigator.pushReplacementNamed(context, '/home', arguments: {
-      // 로그인으로 들어온 유저 정보를 나중에 채워도 됨
-      'nickname': '망설이는 감자',
-      'honorific': '농부님!',
-      'profileImagePath': null,
-    });
+    setState(() => _loading = true);
+    try {
+      // 백엔드 로그인 호출
+      await _auth.login(
+        phone: _phoneC.text.trim(),
+        password: _pwC.text,
+      );
+
+      if (!mounted) return;
+      // 홈 화면으로 이동
+      Navigator.pushReplacementNamed(context, '/home', arguments: {
+        // 필요하면 로그인 응답의 user 정보로 채우기
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
+
 
 
   @override

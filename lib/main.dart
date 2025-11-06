@@ -6,6 +6,9 @@ import 'screens/auth/signup_screen.dart';
 import 'screens/auth/profile_setup.dart';
 import 'screens/home/home_screen.dart';
 
+import 'services/auth_service.dart';
+
+
 void main() => runApp(const HabitBrownApp());
 
 class HabitBrownApp extends StatelessWidget {

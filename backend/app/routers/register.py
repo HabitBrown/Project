@@ -3,7 +3,7 @@ import datetime
 import hashlib
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status, Path
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -34,7 +34,7 @@ class Register:
         self._phone = phone
         self._password = hashlib.sha256((password + phone).encode()).hexdigest()
         self._name = name
-        self._nickname = "none"  # ✅ 닉네임은 profile_setup 단계에서 등록
+        self._nickname = None  # ✅ 닉네임은 profile_setup 단계에서 등록
         self._gender = gender or "N"
         self._age = age
         self._bio = "none"
@@ -114,11 +114,9 @@ def verify_legacy_password(plain_password: str, phone: str, stored_hash: str) ->
 def register_user_api(data: RegisterIn, db: Session = Depends(get_db)):
     """회원가입 (이름 필수 / 닉네임은 기본값 'none')"""
 
-    # 1️⃣ 전화번호 중복 확인
     if db.scalar(select(User.id).where(User.phone == data.phone)):
         raise HTTPException(status_code=409, detail="이미 등록된 전화번호입니다.")
 
-    # 2️⃣ 회원 등록
     reg = Register(
         phone=data.phone,
         password=data.password,
@@ -161,7 +159,6 @@ def update_user_api(
     if not user:
         raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
 
-    # ✅ 닉네임 등록/수정
     if data.nickname is not None:
         candidate = data.nickname.strip()
     

@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import register as register_router
+from app.routers import register, auth 
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Hashbrown API", version="1.0.0")
@@ -13,7 +13,8 @@ app.add_middleware(
 )
 
 # /auth/register, /auth/login
-app.include_router(register_router.router)
+app.include_router(register.router)
+app.include_router(auth.router)
 
 @app.get("/health")
 def health():

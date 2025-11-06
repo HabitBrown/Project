@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/auth_service.dart';
 
 class AppColors {
   static const cream = Color(0xFFFFF8E1);
@@ -26,6 +28,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   final _ageCtrl = TextEditingController();
   final _introCtrl = TextEditingController();
   final _habitCtrl = TextEditingController();
+
+  final _auth = AuthService();
+  bool _saving = false;
+  int? _userId;
 
   String? _selectedGender;
   final List<String> _interests = ['운동', '음식', '시험', '영화', '공부', '사진'];
@@ -127,12 +133,37 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 최초 1회만
+    if (_userId == null) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map) {
+        _userId = args['userId'] as int?;
+        final nickFromSignup = (args['nickname'] as String?)?.trim();
+        if (nickFromSignup != null && nickFromSignup.isNotEmpty) {
+          _nicknameCtrl.text = nickFromSignup;
+        }
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _nicknameCtrl.dispose();
     _ageCtrl.dispose();
     _introCtrl.dispose();
     _habitCtrl.dispose();
     super.dispose();
+  }
+
+  String? _genderToEnum(String? g) {
+    switch (g) {
+      case '남': return 'M';
+      case '여': return 'F';
+      case '없음': return 'N';
+      default: return null;
+    }
   }
 
   @override
