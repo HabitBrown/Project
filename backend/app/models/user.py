@@ -15,7 +15,7 @@ class User(Base):
     phone: Mapped[str] = mapped_column(String(15), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
-    nickname: Mapped[str] = mapped_column(String(30), nullable=False)
+    nickname: Mapped[Optional[str]] = mapped_column(String(30), unique=True, nullable=True)
     gender: Mapped[str] = mapped_column(Enum("M", "F", "N", name="gender_enum"), default="N", nullable=False)
     age: Mapped[Optional[int]] = mapped_column(SmallInteger)
     bio: Mapped[Optional[str]] = mapped_column(String(255))

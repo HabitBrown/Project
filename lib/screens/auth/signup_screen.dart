@@ -1,3 +1,6 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/auth_service.dart';
 import 'package:flutter/material.dart';
 
 /// ================= 공통 테마(시안 기반) =================
@@ -29,6 +32,7 @@ class _SignupPageState extends State<SignupPage> {
   final _phoneCtrl = TextEditingController();
   final _pwCtrl = TextEditingController();
   final _pwConfirmCtrl = TextEditingController();
+  final _nickCtrl = TextEditingController();
 
   final _nameFocus = FocusNode();
   final _phoneFocus = FocusNode();
@@ -40,6 +44,9 @@ class _SignupPageState extends State<SignupPage> {
   bool _obscurePw = true;
   bool _obscurePwConfirm = true;
 
+  final _auth = AuthService();
+  bool _submitting = false;
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -50,6 +57,7 @@ class _SignupPageState extends State<SignupPage> {
     _phoneFocus.dispose();
     _pwFocus.dispose();
     _pwConfirmFocus.dispose();
+    _nickCtrl.dispose();
     super.dispose();
   }
 
@@ -79,24 +87,50 @@ class _SignupPageState extends State<SignupPage> {
     return _formKey.currentState?.validate() == true && _isPhoneVerified;
   }
 
-  void _onSubmit() {
+  Future<void> _onSubmit() async {
     // 폼 검증 + 전화번호 인증 체크
-    if (!_canSubmit) {
-      _formKey.currentState?.validate();
-      if (!_isPhoneVerified) _showSnack('전화번호 인증을 완료해 주세요.');
+    final valid = _formKey.currentState?.validate() ?? false;
+    if (!valid) {
+      _showSnack('입력 값을 확인해 주세요.');
       return;
     }
+    if (!_isPhoneVerified) {
+      _showSnack('전화번호 인증을 완료해 주세요.');
+      return;
+    }
+    if (_submitting) return;
 
-    // TODO: 실제 회원가입 API 호출/처리
+    setState(() => _submitting = true);
+    try {
+      final name = _nameCtrl.text.trim();
+      final phone    = _phoneCtrl.text.trim();
+      final password = _pwCtrl.text;
 
-    // 사용자 피드백
-    _showSnack('회원가입 완료! 🎉');
+      // 1) 회원가입
+      await _auth.register(name: name, phone: phone, password: password);
 
-    // ✅ 회원가입 후 → 프로필 설정으로 이동 (뒤로가기 시 로그인으로 안 돌아가게 교체)
-    Navigator.pushReplacementNamed(
-      context,
-      '/profileSetup',
-    );
+      // 2) 자동 로그인 (토큰/유저ID 저장)
+      await _auth.login(phone: phone, password: password);
+
+      // 3) 저장된 user_id 읽고 프로필 설정으로 이동
+      final prefs  = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('user_id');
+      if (userId == null) {
+        throw Exception('user_id 저장 실패');
+      }
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(
+        context,
+        '/profileSetup',
+        arguments: {'userId': userId, 'name': name},
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString());
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   void _showSnack(String msg) {
