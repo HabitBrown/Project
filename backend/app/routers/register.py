@@ -110,7 +110,7 @@ def verify_legacy_password(plain_password: str, phone: str, stored_hash: str) ->
 # -----------------------------
 # 엔드포인트
 # -----------------------------
-@router.post("/register", response_model=UserOut, status_code=201)
+@router.post("/register", response_model=UserOut, response_model_exclude_none=True, status_code=201)
 def register_user_api(data: RegisterIn, db: Session = Depends(get_db)):
     """회원가입 (이름 필수 / 닉네임은 기본값 'none')"""
 
@@ -182,4 +182,11 @@ def update_user_api(
     db.add(user)
     db.commit()
     db.refresh(user)
+    return user
+
+@router.get("/users/{user_id}", response_model=UserOut, response_model_exclude_none=True)
+def get_user(user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     return user

@@ -33,9 +33,26 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   bool _saving = false;
   int? _userId;
 
+  bool _nickChecked = false;
+  bool? _nickAvailable; // true=사용가능, false=중복, null=미확인
+
   String? _selectedGender;
   final List<String> _interests = ['운동', '음식', '시험', '영화', '공부', '사진'];
   final List<String> _selectedInterests = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // 닉네임이 바뀌면 다시 인증하게 리셋
+    _nicknameCtrl.addListener(() {
+      if (_nickChecked) {
+        setState(() {
+          _nickChecked = false;
+          _nickAvailable = null;
+        });
+      }
+    });
+  }
 
   final ImagePicker _picker = ImagePicker();
   File? _profileImageFile;
@@ -99,37 +116,80 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     );
   }
 
-  void _onSaveProfile() {
-    // 간단 유효성: 닉네임은 필수로 체크
-    if (_nicknameCtrl.text.trim().isEmpty) {
+  Future<void> _onSaveProfile() async {
+    final nickname = _nicknameCtrl.text.trim();
+
+    // 기본 유효성 검사
+    if (nickname.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('닉네임을 입력해 주세요.')),
       );
       return;
     }
 
-    // 홈 화면에서 사용할 수 있도록 필요한 값들을 arguments로 전달
-    final profile = {
-      'nickname': _nicknameCtrl.text.trim(),
-      'gender': _selectedGender,
-      'age': _ageCtrl.text.trim(),
-      'intro': _introCtrl.text.trim(),
-      'interests': List<String>.from(_selectedInterests),
-      'avatarPath': _profileImageFile?.path, // null이면 기본 아바타 사용
-    };
+    if (!_nickChecked || _nickAvailable != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('닉네임 중복인증을 먼저 통과해 주세요.')),
+      );
+      return;
+    }
 
-    // 저장 안내
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('프로필을 저장했어요!')),
-    );
+    //유저 ID 가져오기 (회원가입 후 전달받거나 SharedPreferences에서 가져옴)
+    var userId = _userId;
+    if (userId == null) {
+      final prefs = await SharedPreferences.getInstance();
+      userId = prefs.getInt('user_id');
+    }
 
-    // ✅ 프로필 저장 후 홈으로 이동(스택 제거)
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      '/home',
-          (route) => false,
-      arguments: profile,
-    );
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사용자 정보를 불러올 수 없습니다. 다시 로그인해주세요.')),
+      );
+      return;
+    }
+
+    // 서버로 프로필 업데이트 요청
+    setState(() => _saving = true);
+    try {
+      final genderEnum = _genderToEnum(_selectedGender);
+      final age = _ageCtrl.text.trim().isEmpty ? null : int.tryParse(_ageCtrl.text.trim());
+
+      await _auth.updateProfile(
+        userId: userId,
+        nickname: nickname,
+        gender: genderEnum,
+        age: age,
+        bio: _introCtrl.text.trim().isEmpty ? null : _introCtrl.text.trim(),
+        // nickname 추가해야 DB에 닉네임이 저장됨!
+        name: nickname, // ⚠️ 백엔드 update_user 함수에서 닉네임 필드를 name 대신 nickname으로 받는다면 이 키 이름 수정 필요
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('프로필이 성공적으로 저장되었습니다.')),
+      );
+
+      // 홈 화면으로 이동
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/home',
+            (route) => false,
+        arguments: {
+          'nickname': nickname,
+          'gender': _selectedGender,
+          'age': _ageCtrl.text.trim(),
+          'intro': _introCtrl.text.trim(),
+          'interests': List<String>.from(_selectedInterests),
+          'avatarPath': _profileImageFile?.path,
+        },
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('저장 실패: $e')),
+      );
+    } finally {
+      setState(() => _saving = false);
+    }
   }
 
   @override
@@ -251,10 +311,31 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton(
-                        onPressed: () {
-                          // TODO: 닉네임 중복 체크 API 연동
+                        onPressed: () async {
+                          final nickname = _nicknameCtrl.text.trim();
+                          if(nickname.isEmpty){
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('닉네임을 입력해 주세요.')),);
+                          return;
+                          }
+
+                          setState(() => _saving = true);
+                          final available = await _auth.checkNickname(nickname);
+                          setState(() {
+                            _saving = false;
+                            _nickChecked = true;
+                            _nickAvailable = available;
+                          });
+
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('중복 체크 준비 중…')),
+                            SnackBar(
+                                content: Text(
+                                  available
+                                      ?'사용 가능 닉네임입니다.'
+                                      :'이미 사용중인 닉네임입니다.',
+                                ),
+                              backgroundColor:
+                                available ? Colors.green : AppColors.brick,
+                            ),
                           );
                         },
                         style: ElevatedButton.styleFrom(
@@ -279,6 +360,23 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                       ),
                     ],
                   ),
+
+                  if(_nickChecked)
+                    Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                            _nickAvailable == true
+                                ? '사용 가능한 닉네임입니다'
+                                : '이미 사용 중입니다',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _nickAvailable == true
+                              ? Colors.green
+                                : AppColors.brick,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ),
                   const SizedBox(height: 16),
 
                   _label('성별'),

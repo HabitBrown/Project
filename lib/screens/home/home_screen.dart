@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/auth_service.dart';
 /// =======================
 ///  공통 리소스 & 테마 정의
 /// =======================
@@ -73,12 +74,76 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String nickname  = '망설이는 감자';
   String honorific = '농부님!';
+  int _hb = 0;
+  String? _avatarPath;
 
   // 가변 리스트
   late List<HomeHabit> _today;
   late List<HomeHabit> _fighting;
 
   bool _initialized = false;
+
+  Future<void> _loadDisplayName() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nick = (prefs.getString('nickname') ?? '').trim();
+    final name = (prefs.getString('name') ?? '').trim();
+
+    if (!mounted) return;
+    setState(() {
+      nickname = nick.isNotEmpty ? nick : (name.isNotEmpty ? name : nickname);
+    });
+
+  }
+
+  Future<void> _syncUserFromServer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    if (userId == null) return;
+
+    try {
+      final me = await AuthService().getUser(userId); // GET /auth/users/{id}
+
+      // 1) 닉네임/이름 최신화
+      final nick = (me['nickname'] ?? '').toString().trim();
+      final name = (me['name'] ?? '').toString().trim();
+
+      // 2) 잔고/아바타
+      final balance = me['hb_balance'] is int ? me['hb_balance'] as int
+          : int.tryParse('${me['hb_balance'] ?? 0}') ?? 0;
+      final avatar  = (me['profile_picture'] ?? '').toString();
+      final normalizedAvatar = (avatar.isEmpty || avatar == 'none') ? null : avatar;
+
+      // 3) 캐시 갱신
+      await prefs.setString('nickname', nick);
+      await prefs.setString('name', name);
+      await prefs.setInt('hb_balance', balance);
+      if (normalizedAvatar == null) {
+        await prefs.remove('profile_picture');
+      } else {
+        await prefs.setString('profile_picture', normalizedAvatar);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        if (nick.isNotEmpty) {
+          nickname = nick;
+        } else if (name.isNotEmpty) {
+          nickname = name;
+        }
+        _hb = balance;
+        _avatarPath = normalizedAvatar;
+      });
+    } catch (_) {
+      // 서버 실패해도 조용히 무시 (오프라인 대비)
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDisplayName(); // 로그인 시 닉네임 불러오기
+    _syncUserFromServer();
+  }
 
   // 로그인으로 바로 온 경우 사용할 기본(씨드) 데이터
   List<HomeHabit> _seedToday() => [
@@ -98,10 +163,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final args = ModalRoute.of(context)?.settings.arguments;
 
     if (args is Map && args['nickname'] is String) {
-      // ▶ 회원가입→프로필설정→홈: 닉네임만 반영, 목록은 비워둠
-      nickname = (args['nickname'] as String).trim().isEmpty
-          ? nickname
-          : (args['nickname'] as String).trim();
+      final fromProfile = (args['nickname'] as String).trim();
+      if (fromProfile.isNotEmpty) {
+        nickname = fromProfile; // 프로필 설정 직후 닉네임 반영
+      }
       _today = [];
       _fighting = [];
     } else {
@@ -190,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
           constraints: const BoxConstraints(maxWidth: 560),
           child: CustomScrollView(
             slivers: [
-              const SliverToBoxAdapter(child: _TopBar()),
+              SliverToBoxAdapter(child: _TopBar(hbBalance: _hb)),
 
               // 상단 크림 영역
               SliverToBoxAdapter(
@@ -273,7 +338,8 @@ class _HomeScreenState extends State<HomeScreen> {
 ///  상단바
 /// =======================
 class _TopBar extends StatelessWidget implements PreferredSizeWidget {
-  const _TopBar();
+  final int hbBalance;
+  const _TopBar({required this.hbBalance});
   @override
   Size get preferredSize => const Size.fromHeight(92);
 
@@ -299,7 +365,7 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
             children: [
               Image.asset(AppImages.hbLogo, width: 18, height: 18),
               const SizedBox(width: 6),
-              const Text('53', style: TextStyle(color: AppColors.dark)),
+              Text('$hbBalance', style: const TextStyle(color: AppColors.dark)),
             ],
           ),
         ),
