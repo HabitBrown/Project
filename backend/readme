@@ -39,6 +39,12 @@ DB_URL = os.getenv(
 cd backend
 python -m app.create_db
 
+테이블 삭제
+python -m app.drop_db
+
 MySQL에서 확인:
 USE hashbrown;
 SHOW TABLES;
+
+백엔드 실행
+uvicorn app.main:app --reload

@@ -17,7 +17,7 @@ class UserOut(BaseModel):
     id: int
     phone: str
     name: str
-    nickname: str
+    nickname: Optional[str] = None
     gender: Optional[str] = None
     age: Optional[int] = None
     timezone: Optional[str] = None
