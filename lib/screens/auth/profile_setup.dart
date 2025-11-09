@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AppColors {
   static const cream = Color(0xFFFFF8E1);
@@ -55,7 +56,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 
   final ImagePicker _picker = ImagePicker();
-  File? _profileImageFile;
+  XFile? _profileImageFile;
+  String? _uploadedImageUrl;
 
   /// 회원가입 화면에서 전달된 값을 한 번만 초기 세팅
   Future<void> _pickImage(ImageSource source) async {
@@ -66,7 +68,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
         imageQuality: 85,
       );
       if (img != null) {
-        setState(() => _profileImageFile = File(img.path));
+        setState(() => _profileImageFile = img);
       }
     } catch (e) {
       if (!mounted) return;
@@ -75,6 +77,24 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       );
     }
   }
+
+  Future<void> _uploadIfNeeded(int userId) async {
+    if (_profileImageFile == null) return; // 이미지 안 골랐으면 스킵
+
+    final url = await _auth.uploadProfilePicture(
+      userId: userId,
+      imageFile: _profileImageFile!,
+    );
+
+    if (url == null) {
+      throw Exception('프로필 사진 업로드 실패');
+    }
+
+    setState(() {
+      _uploadedImageUrl = url; // 서버 URL 저장, UI에도 즉시 반영
+    });
+  }
+
 
   void _showImageSheet() {
     showModalBottomSheet(
@@ -154,14 +174,16 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       final genderEnum = _genderToEnum(_selectedGender);
       final age = _ageCtrl.text.trim().isEmpty ? null : int.tryParse(_ageCtrl.text.trim());
 
+      // 1) 이미지가 선택되어 있으면 먼저 업로드 (서버가 profile_picture를 업데이트함)
+      await _uploadIfNeeded(userId);
+
+      // 2) 닉/성별/나이/소개 업데이트
       await _auth.updateProfile(
         userId: userId,
         nickname: nickname,
         gender: genderEnum,
         age: age,
         bio: _introCtrl.text.trim().isEmpty ? null : _introCtrl.text.trim(),
-        // nickname 추가해야 DB에 닉네임이 저장됨!
-        name: nickname, // ⚠️ 백엔드 update_user 함수에서 닉네임 필드를 name 대신 nickname으로 받는다면 이 키 이름 수정 필요
       );
 
       if (!mounted) return;
@@ -180,6 +202,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
           'age': _ageCtrl.text.trim(),
           'intro': _introCtrl.text.trim(),
           'interests': List<String>.from(_selectedInterests),
+          'avatarUrl': _uploadedImageUrl,
           'avatarPath': _profileImageFile?.path,
         },
       );
@@ -237,37 +260,59 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             Stack(
               clipBehavior: Clip.none,
               children: [
+                // 히트영역을 넉넉히 확보(아바타+연필이 전부 Stack 영역 안에 들어오게)
+                const SizedBox(height: 220, width: double.infinity),
+
+                // 상단 배경
                 Container(
                   height: 140,
                   color: AppColors.lightBrown.withOpacity(0.4),
                 ),
+
+                // 아바타 + 연필버튼(연필만 터치 가능)
                 Positioned(
-                  top: 80,
+                  top: 60,   // 필요하면 미세조정
                   left: 35,
-                  child: InkWell(
-                    onTap: _showImageSheet,
-                    borderRadius: BorderRadius.circular(64),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CircleAvatar(
-                          radius: 55,
-                          backgroundColor: AppColors.cream,
-                          backgroundImage: _profileImageFile != null
-                              ? FileImage(_profileImageFile!)
-                              : null,
-                          child: _profileImageFile == null
-                              ? Icon(
-                            Icons.camera_alt,
-                            size: 40,
-                            color: AppColors.dark,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // 아바타 (서버/로컬/기본 아이콘 우선순위로 표시)
+                      CircleAvatar(
+                        radius: 55,
+                        backgroundColor: AppColors.cream,
+                        child: ClipOval(
+                          child: _uploadedImageUrl != null
+                              ? Image.network(
+                            _uploadedImageUrl!,
+                            width: 110, height: 110, fit: BoxFit.cover,
                           )
-                              : null,
+                              : (_profileImageFile != null
+                              ? FutureBuilder<Uint8List>(
+                            future: _profileImageFile!.readAsBytes(),
+                            builder: (_, snap) {
+                              if (!snap.hasData) {
+                                return const SizedBox(width: 110, height: 110);
+                              }
+                              return Image.memory(
+                                snap.data!,
+                                width: 110, height: 110, fit: BoxFit.cover,
+                              );
+                            },
+                          )
+                              : Icon(Icons.camera_alt, size: 40, color: AppColors.dark)),
                         ),
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
+                      ),
+
+                      // 연필 아이콘 버튼(이것만 눌러서 동작)
+                      Positioned(
+                        right: -2,
+                        bottom: -2,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque, // 빈 공간 포함해 터치 허용
+                          onTap: _showImageSheet,           // ← 이미지 선택 바텀시트
                           child: Container(
+                            width: 36,
+                            height: 36,
                             decoration: BoxDecoration(
                               color: AppColors.green,
                               borderRadius: BorderRadius.circular(12),
@@ -279,22 +324,16 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                                 ),
                               ],
                             ),
-                            padding: const EdgeInsets.all(6),
-                            child: const Icon(
-                              Icons.edit,
-                              size: 16,
-                              color: Colors.white,
-                            ),
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.edit, size: 16, color: Colors.white),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 64),
               ],
             ),
-
             // ✅ 여기서는 Positioned를 쓰지 않습니다 (Stack 밖이므로)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -315,7 +354,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                           final nickname = _nicknameCtrl.text.trim();
                           if(nickname.isEmpty){
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('닉네임을 입력해 주세요.')),);
-                          return;
+                            return;
                           }
 
                           setState(() => _saving = true);
@@ -328,13 +367,13 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                                content: Text(
-                                  available
-                                      ?'사용 가능 닉네임입니다.'
-                                      :'이미 사용중인 닉네임입니다.',
-                                ),
+                              content: Text(
+                                available
+                                    ?'사용 가능 닉네임입니다.'
+                                    :'이미 사용중인 닉네임입니다.',
+                              ),
                               backgroundColor:
-                                available ? Colors.green : AppColors.brick,
+                              available ? Colors.green : AppColors.brick,
                             ),
                           );
                         },
@@ -363,19 +402,19 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
                   if(_nickChecked)
                     Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                            _nickAvailable == true
-                                ? '사용 가능한 닉네임입니다'
-                                : '이미 사용 중입니다',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _nickAvailable == true
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        _nickAvailable == true
+                            ? '사용 가능한 닉네임입니다'
+                            : '이미 사용 중입니다',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _nickAvailable == true
                               ? Colors.green
-                                : AppColors.brick,
-                            fontWeight: FontWeight.w600,
-                          ),
+                              : AppColors.brick,
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
                     ),
                   const SizedBox(height: 16),
 
