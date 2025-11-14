@@ -11,6 +11,7 @@ class ProfileOut(BaseModel):
     age: Optional[int] = None
     gender: str
     profile_picture: Optional[str] = None
+    hb_balance: int
 
     class Config:
         from_attributes = True

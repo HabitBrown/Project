@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
+import '../../core/base_url.dart';
 /// =======================
 ///  공통 리소스 & 테마 정의
 /// =======================
@@ -87,10 +88,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final nick = (prefs.getString('nickname') ?? '').trim();
     final name = (prefs.getString('name') ?? '').trim();
+    final avatar = (prefs.getString('profile_picture') ?? '').trim();
+    final hb = prefs.getInt('hb_balance') ?? 0;
 
     if (!mounted) return;
     setState(() {
       nickname = nick.isNotEmpty ? nick : (name.isNotEmpty ? name : nickname);
+      _avatarPath = avatar.isNotEmpty ? avatar : null;
+      _hb = hb;
     });
 
   }
@@ -108,12 +113,23 @@ class _HomeScreenState extends State<HomeScreen> {
       final name = (me['name'] ?? '').toString().trim();
 
       // 2) 잔고/아바타
-      final balance = me['hb_balance'] is int ? me['hb_balance'] as int
+      final balance = me['hb_balance'] is int
+          ? me['hb_balance'] as int
           : int.tryParse('${me['hb_balance'] ?? 0}') ?? 0;
-      final avatar  = (me['profile_picture'] ?? '').toString();
-      final normalizedAvatar = (avatar.isEmpty || avatar == 'none') ? null : avatar;
 
-      // 3) 캐시 갱신
+      // 3) 프로필 사진 URL 정규화
+      final rawAvatar = (me['profile_picture'] ?? '').toString().trim();
+
+      String? normalizedAvatar;
+      if (rawAvatar.isEmpty || rawAvatar == 'none'){
+        normalizedAvatar = null;
+      }else if (rawAvatar.startsWith('http')){
+        normalizedAvatar = rawAvatar;
+      } else {
+        // "/uploads/..." 같은 상대 경로인 경우 → 베이스 URL 붙이기
+        normalizedAvatar = '$kBaseUrl$rawAvatar';
+      }
+      // 4) 캐시 갱신
       await prefs.setString('nickname', nick);
       await prefs.setString('name', name);
       await prefs.setInt('hb_balance', balance);
@@ -136,6 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       // 서버 실패해도 조용히 무시 (오프라인 대비)
     }
+
   }
 
   @override
@@ -270,6 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: HeaderProfile(
                           nickname: nickname,
                           honorific: honorific.isEmpty ? '농부님!' : honorific,
+                          avatarUrl: _avatarPath,
                         ),
                       ),
                       const SizedBox(height: 15),
@@ -383,7 +401,14 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
 class HeaderProfile extends StatelessWidget {
   final String nickname;
   final String honorific;
-  const HeaderProfile({super.key, required this.nickname, required this.honorific});
+  final String? avatarUrl;
+
+  const HeaderProfile({
+    super.key,
+    required this.nickname,
+    required this.honorific,
+    this.avatarUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -391,19 +416,40 @@ class HeaderProfile extends StatelessWidget {
     const nameBold   = TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black);
     const titleStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.w400, color: Colors.black);
 
+    // 실제로 사용할 아바타 위젯
+    Widget avatarChild;
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      avatarChild = ClipOval(
+        child: Image.network(
+          avatarUrl!,
+          fit: BoxFit.cover,
+          width: 60,
+          height: 60,
+          errorBuilder: (_, __, ___) =>
+          const Icon(Icons.camera_alt_outlined, color: AppColors.dark),
+        ),
+      );
+    } else {
+      avatarChild = const Icon(Icons.camera_alt_outlined, color: AppColors.dark);
+    }
+
     return Padding(
       padding: const EdgeInsets.only(left: 20),
       child: Row(
         children: [
           Container(
-            width: 60, height: 60,
+            width: 60,
+            height: 60,
             decoration: BoxDecoration(
               color: AppColors.page,
               shape: BoxShape.circle,
               border: Border.all(color: const Color(0xBFBF8D6A)),
-              boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 5, offset: Offset(0, 2))],
+              boxShadow: const [
+                BoxShadow(color: AppColors.shadow, blurRadius: 5, offset: Offset(0, 2)),
+              ],
             ),
-            child: const Icon(Icons.camera_alt_outlined, color: AppColors.dark),
+            //여기서 avatarChild 사용
+            child: Center(child: avatarChild),
           ),
           const SizedBox(width: 16),
           Column(
