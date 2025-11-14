@@ -21,6 +21,9 @@ class UserOut(BaseModel):
     gender: Optional[str] = None
     age: Optional[int] = None
     timezone: Optional[str] = None
+    bio: Optional[str] = None
+    profile_picture: Optional[str] = None
+    hb_balance: int
 
     class Config:
         from_attributes = True  # SQLAlchemy -> Pydantic 변환 허용
