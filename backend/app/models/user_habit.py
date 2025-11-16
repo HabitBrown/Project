@@ -26,3 +26,10 @@ class UserHabit(Base):
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    difficulty: Mapped[int] = mapped_column(SmallInteger, default=1, nullable=False)
+    
+    duel_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("duels.id", ondelete="SET NULL"),
+        nullable=True,
+    )

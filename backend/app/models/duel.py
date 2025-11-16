@@ -21,6 +21,9 @@ class Duel(Base):
     days_of_week: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    
+    difficulty: Mapped[int] = mapped_column(SmallInteger, default=1, nullable=False)
+    
     status: Mapped[str] = mapped_column(Enum("pending", "active", "finished", "canceled", name="duel_status_enum"), default="pending", nullable=False)
     result: Mapped[Optional[str]] = mapped_column(Enum("owner_win", "challenger_win", "draw", "forfeit_owner", "forfeit_challenger", name="duel_result_enum"))
     owner_success_cnt: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
