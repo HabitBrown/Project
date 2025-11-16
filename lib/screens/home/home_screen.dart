@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
 import '../../core/base_url.dart';
+import '../../services/home_service.dart';
+import '../../models/home_summary.dart';
+import '../../models/home_habit.dart';
+
 /// =======================
 ///  공통 리소스 & 테마 정의
 /// =======================
@@ -43,23 +47,7 @@ class Dimens {
 /// =======================
 ///  모델 정의
 /// =======================
-enum HabitStatus { pending, verified, skipped }
 
-class HomeHabit {
-  final String title;
-  final String time;
-  final String method;
-  double progress;
-  HabitStatus status;
-
-  HomeHabit({
-    required this.title,
-    required this.time,
-    required this.method,
-    this.progress = 0.0,
-    this.status = HabitStatus.pending,
-  });
-}
 
 /// =======================
 ///  홈 화면
@@ -72,6 +60,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 1;
+
+  final _homeService = HomeService();
+  HomeSummary? _summary;
+  bool _isSummaryLoading = true;
+  String? _summaryError;
 
   String nickname  = '망설이는 감자';
   String honorific = '농부님!';
@@ -155,22 +148,41 @@ class _HomeScreenState extends State<HomeScreen> {
 
   }
 
+  Future<void> _loadHomeSummary() async {
+    try {
+      final data = await _homeService.fetchSummary();
+      if (!mounted) return;
+      setState(() {
+        _summary = data;
+        _isSummaryLoading = false;
+        _summaryError = null;
+
+        _today = data.todayHabits;
+        _fighting = data.fightingHabits;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _summaryError = e.toString();
+        _isSummaryLoading = false;
+
+        _today = [];
+        _fighting = [];
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    _today = [];
+    _fighting = [];
+
     _loadDisplayName(); // 로그인 시 닉네임 불러오기
     _syncUserFromServer();
+    _loadHomeSummary();
   }
-
-  // 로그인으로 바로 온 경우 사용할 기본(씨드) 데이터
-  List<HomeHabit> _seedToday() => [
-    HomeHabit(title: '자기 전 스트레칭하기', time: '20:00 ~ 24:00', method: '사진', progress: .62),
-    HomeHabit(title: '퇴근 후 빨래 바로 돌리기', time: '18:00 ~ 20:00', method: '사진', progress: .25),
-  ];
-  List<HomeHabit> _seedFighting() => [
-    HomeHabit(title: '아침에 물 한잔 마시기', time: '10:00 ~ 12:00', method: '사진', progress: .8),
-    HomeHabit(title: '나갈 때 키 챙기기', time: '09:00 ~ 10:00', method: '사진', progress: .3),
-  ];
 
   @override
   void didChangeDependencies() {
@@ -184,12 +196,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (fromProfile.isNotEmpty) {
         nickname = fromProfile; // 프로필 설정 직후 닉네임 반영
       }
-      _today = [];
-      _fighting = [];
-    } else {
-      // ▶ 일반 로그인→홈: 기본 목표 넣기
-      _today = _seedToday();
-      _fighting = _seedFighting();
     }
 
     _initialized = true;
@@ -252,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (added == true) {
       final h = HomeHabit(
+        userHabitId: 0, // TODO: 나중에 서버에 생성 API 붙이면 실제 ID로 교체
         title: titleC.text.trim(),
         time:  timeC.text.trim().isEmpty ? '시간 미정' : timeC.text.trim(),
         method: methodC.text.trim().isEmpty ? '사진' : methodC.text.trim(),
@@ -261,6 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -927,6 +935,59 @@ class _BottomBar extends StatelessWidget {
         BottomNavigationBarItem(icon: Icon(Icons.groups_outlined),         label: '커뮤니티'),
         BottomNavigationBarItem(icon: Icon(Icons.emoji_emotions_outlined), label: '마이페이지'),
       ],
+    );
+  }
+}
+
+class _SummaryChip extends StatelessWidget {
+  final String label;
+  final int value;
+
+  const _SummaryChip({
+    super.key,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.page,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.brown.withOpacity(0.4)),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.shadow,
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$value',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.dark,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.dark,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -7,8 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import register, auth
-from app.routers import profile_setting  # ⬅️ 프로필 라우터 추가
+from app.routers import register, auth,profile_setting,home,habits
 
 app = FastAPI(title="Hashbrown API", version="1.0.0")
 
@@ -29,7 +28,8 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 app.include_router(register.router)
 app.include_router(auth.router)
 app.include_router(profile_setting.router)  
-
+app.include_router(home.router)
+app.include_router(habits.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
