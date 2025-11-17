@@ -1,40 +1,74 @@
+// lib/screens/home/profile_setting.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-class AppColors {
-  static const cream = Color(0xFFFFF8E1);
-  static const green = Color(0xFFAFDBAE);
-  static const brown = Color(0xFFBF8D6A);
-  static const dark = Color(0xFF535353);
-  static const grey = Color(0xFFD9D9D9);
-  static const lightBrown = Color(0xFFECCA89);
-  static const chipYellow = Color(0xFFF0E27A);
-  static const divider = Color(0xFFD8CBB6);
-  static const brick = Color(0xFFC32B2B);
-}
+// 기존 색상 팔레트 재사용
+import 'home_screen.dart' show AppColors;
 
-class ProfileSetupPage extends StatefulWidget {
-  const ProfileSetupPage({Key? key}) : super(key: key);
+class ProfileSettingPage extends StatefulWidget {
+  const ProfileSettingPage({
+    Key? key,
+    this.nickname,
+    this.gender,
+    this.age,
+    this.intro,
+    this.interests,
+    this.avatarPath,
+  }) : super(key: key);
+
+  final String? nickname;
+  final String? gender;
+  final String? age;
+  final String? intro;
+  final List<String>? interests;
+  final String? avatarPath;
 
   @override
-  State<ProfileSetupPage> createState() => _ProfileSetupPageState();
+  State<ProfileSettingPage> createState() => _ProfileSettingPageState();
 }
 
-class _ProfileSetupPageState extends State<ProfileSetupPage> {
-  final _nicknameCtrl = TextEditingController();
-  final _ageCtrl = TextEditingController();
-  final _introCtrl = TextEditingController();
-  final _habitCtrl = TextEditingController();
+class _ProfileSettingPageState extends State<ProfileSettingPage> {
+  late TextEditingController _nicknameCtrl;
+  late TextEditingController _ageCtrl;
+  late TextEditingController _introCtrl;
+  late TextEditingController _habitCtrl;
 
   String? _selectedGender;
-  final List<String> _interests = ['운동', '음식', '시험', '영화', '공부', '사진', '음악', '춤'];
-  final List<String> _selectedInterests = [];
+  final List<String> _interests = [
+    '운동',
+    '음식',
+    '시험',
+    '영화',
+    '공부',
+    '사진',
+    '음악',
+    '춤',
+  ];
+  List<String> _selectedInterests = [];
 
   final ImagePicker _picker = ImagePicker();
   File? _profileImageFile;
 
-  /// 회원가입 화면에서 전달된 값을 한 번만 초기 세팅
+  @override
+  void initState() {
+    super.initState();
+
+    // ✅ 기존 값들로 컨트롤러 초기화
+    _nicknameCtrl = TextEditingController(text: widget.nickname ?? '');
+    _ageCtrl = TextEditingController(text: widget.age ?? '');
+    _introCtrl = TextEditingController(text: widget.intro ?? '');
+    _habitCtrl = TextEditingController();
+
+    _selectedGender = widget.gender;
+    _selectedInterests = List<String>.from(widget.interests ?? []);
+
+    if (widget.avatarPath != null && widget.avatarPath!.isNotEmpty) {
+      _profileImageFile = File(widget.avatarPath!);
+    }
+  }
+
+  /// 이미지 선택
   Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? img = await _picker.pickImage(
@@ -94,7 +128,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 
   void _onSaveProfile() {
-    // 간단 유효성: 닉네임은 필수로 체크
     if (_nicknameCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('닉네임을 입력해 주세요.')),
@@ -102,28 +135,21 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       return;
     }
 
-    // 홈 화면에서 사용할 수 있도록 필요한 값들을 arguments로 전달
     final profile = {
       'nickname': _nicknameCtrl.text.trim(),
       'gender': _selectedGender,
       'age': _ageCtrl.text.trim(),
       'intro': _introCtrl.text.trim(),
       'interests': List<String>.from(_selectedInterests),
-      'avatarPath': _profileImageFile?.path, // null이면 기본 아바타 사용
+      'avatarPath': _profileImageFile?.path,
     };
 
-    // 저장 안내
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('프로필을 저장했어요!')),
     );
 
-    // ✅ 프로필 저장 후 홈으로 이동(스택 제거)
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      '/home',
-          (route) => false,
-      arguments: profile,
-    );
+    // ✅ 수정 후, 현재 페이지를 닫으면서 새 프로필을 MyPage로 전달
+    Navigator.pop(context, profile);
   }
 
   @override
@@ -204,7 +230,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
               ],
             ),
 
-            // ✅ 여기서는 Positioned를 쓰지 않습니다 (Stack 밖이므로)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
@@ -216,7 +241,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   Row(
                     children: [
                       Expanded(
-                        child: _textField(_nicknameCtrl, hint: '닉네임을 입력하세요'),
+                        child:
+                        _textField(_nicknameCtrl, hint: '닉네임을 입력하세요'),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton(
@@ -254,7 +280,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   DropdownButtonFormField<String>(
                     value: _selectedGender,
                     items: const ['남', '여', '없음']
-                        .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                        .map((g) =>
+                        DropdownMenuItem(value: g, child: Text(g)))
                         .toList(),
                     onChanged: (v) => setState(() => _selectedGender = v),
                     decoration: _inputDecoration(),
@@ -314,7 +341,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
                   Center(
                     child: ElevatedButton(
-                      onPressed: _onSaveProfile, // ✅ 저장 → 홈으로
+                      onPressed: _onSaveProfile,
                       style: ElevatedButton.styleFrom(
                         fixedSize: const Size(140, 55),
                         backgroundColor: AppColors.brick,
@@ -346,7 +373,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   // ===== UI helpers =====
   Widget _label(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
-    child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
+    child: Text(
+      text,
+      style: const TextStyle(fontWeight: FontWeight.bold),
+    ),
   );
 
   InputDecoration _inputDecoration() => InputDecoration(
