@@ -1018,25 +1018,33 @@ class _RivalCard extends StatelessWidget {
                     ),
                     if (showRightButton)
                       SizedBox(
-                        width: buttonWidth,
-                        child: Center(
-                          child: Transform.translate(
-                            offset: const Offset(-45, 5),
-                            child: const Text(
-                              '라이벌\n보러가기',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w400,
-                                fontSize: 11,
-                                height: 1.3,
+                          width: buttonWidth,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Transform.translate(
+                              offset: const Offset(0, 6),
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 24,
+                                  bottom: 0,
+                                ),
+                                child: const Text(
+                                  '라이벌\n보러가기',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w400,
+                                    fontSize: 11,
+                                    height: 1.3,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
+                          )
                       )
                     else
                       SizedBox(width: buttonWidth),
+
                   ],
                 ),
               ),
