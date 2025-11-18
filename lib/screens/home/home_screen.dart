@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'habit_setting.dart';
 import 'cert_page.dart';
 import 'mypage_screen.dart';
+import 'alarm_screen.dart';
+import 'shopping_screen.dart';
 
 
 /// =======================
@@ -118,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Timer? _tick;
 
-  String nickname = '망설이는 감자';
+  String nickname = '감자';
   String honorific = '농부님!';
 
   late List<HomeHabit> _today;
@@ -408,22 +410,30 @@ class _HomeScreenState extends State<HomeScreen> {
               '/hash',
               arguments: {'hbCount': _hb},
             );
+          } else if (i == 3) {
+            // 알림
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AlarmScreen(),
+              ),
+            );
           } else if (i == 4) {
-            // 마이페이지: 해시내기랑 똑같이 named route + arguments
+            // 마이페이지
             Navigator.pushNamed(
               context,
               '/mypage',
               arguments: {'hbCount': _hb},
             );
           } else {
-            // 2: 홈화면, 3: 알림(추후)
+            // 2: 홈화면
             setState(() {
               _tab = i;
             });
           }
         },
       ),
-     );
+    );
     }
 }
 
@@ -474,11 +484,20 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
             ],
           ),
         ),
-        const SizedBox(width: 10),
         IconButton(
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ShoppingScreen(
+                  hbCount: hb, // ✅ 현재 보유 해시브라운 수 전달
+                ),
+              ),
+            );
+          },
         ),
+
         const SizedBox(width: 6),
       ],
     );
@@ -934,8 +953,8 @@ class _HabitInfo extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 3),
-        Text('· 인증 시간: ${h.time}', style: bodyStyle),
-        Text('· 인증 방법: ${h.method}', style: bodyStyle),
+        Text('· 인증 시간: ${h.time}', style: bodyStyle, maxLines:1, ),
+        Text('· 인증 방법: ${h.method}', style: bodyStyle, maxLines:1),
       ],
     );
   }
