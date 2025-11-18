@@ -8,9 +8,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import delete, select 
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserInterest
 from app.schemas.profile import ProfileOut,ProfileUpdateIn
 
 router = APIRouter(prefix="/users", tags=["Profile"])
@@ -45,7 +46,6 @@ async def _save_image(file: UploadFile, subdir: str = "profile") -> str:
     return f"/uploads/{subdir}/{fname}"
 
 
-
 def _get_user_or_404(db: Session, user_id: int) -> User:
     user = db.get(User, user_id)
     if not user:
@@ -53,11 +53,10 @@ def _get_user_or_404(db: Session, user_id: int) -> User:
     return user
 
 
-
 @router.get("/{user_id}/profile", response_model=ProfileOut)
 def get_profile(user_id: int, db: Session = Depends(get_db)):
     user = _get_user_or_404(db, user_id)
-    return user
+    return _build_profile_out(db, user)
 
 
 @router.put("/{user_id}/profile", response_model=ProfileOut)
@@ -72,6 +71,15 @@ def update_profile(user_id: int, payload: ProfileUpdateIn, db: Session = Depends
         user.age = payload.age
     if payload.gender is not None:
         user.gender = payload.gender
+        
+        if payload.interests is not None:
+        # 기존 관심사 전부 삭제
+            db.execute(
+                delete(UserInterest).where(UserInterest.user_id == user_id)
+            )
+        # 새 관심사 리스트로 다시 insert
+        for interest_id in payload.interests:
+            db.add(UserInterest(user_id=user_id, interest_id=interest_id))
 
     db.add(user)
     db.commit()
@@ -93,3 +101,20 @@ async def upload_profile_picture(
     db.commit()
     db.refresh(user)
     return user
+
+
+def _build_profile_out(db: Session, user: User) -> ProfileOut:
+    """User + 관심사 리스트를 ProfileOut으로 변환하는 헬퍼"""
+    interest_ids = db.scalars(
+        select(UserInterest.interest_id).where(UserInterest.user_id == user.id)
+    ).all()
+
+    return ProfileOut(
+        id=user.id,
+        nickname=user.nickname,
+        bio=user.bio,
+        age=user.age,
+        gender=user.gender,
+        profile_picture=user.profile_picture,
+        interests=list(interest_ids),  # ✅ 스키마에 맞게 리스트로 변환
+    )

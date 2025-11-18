@@ -1,6 +1,6 @@
 # app/schemas/profile.py
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
@@ -12,7 +12,7 @@ class ProfileOut(BaseModel):
     gender: str
     profile_picture: Optional[str] = None
     hb_balance: int
-
+    interests: List[int] = []
     class Config:
         from_attributes = True
 
@@ -23,3 +23,4 @@ class ProfileUpdateIn(BaseModel):
     bio: Optional[str] = Field(default=None, max_length=255)
     age: Optional[int] = None
     gender: Optional[str] = None  # "M", "F", "N"
+    interests: Optional[List[int]] = None

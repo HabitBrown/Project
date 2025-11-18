@@ -12,6 +12,8 @@ from app.models.duel import Duel
 from app.models.certification import Certification
 from app.schemas.home import HomeSummaryOut, HomeHabitItemOut
 
+from app.routers.register import get_current_user
+
 router = APIRouter(prefix="/home", tags=["Home"])
 
 
@@ -22,18 +24,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# 실제 프로젝트에서 사용하는 current_user 의존성으로 교체해서 쓰면 됨
-def get_current_user(db: Session = Depends(get_db)) -> User:
-    # ⚠️ 임시 구현: 첫 번째 유저를 current_user로 사용
-    user = db.query(User).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="사용자가 존재하지 않습니다.",
-        )
-    return user
 
 
 @router.get("/summary", response_model=HomeSummaryOut)

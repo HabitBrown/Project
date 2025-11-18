@@ -4,6 +4,8 @@ import hashlib
 from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -34,7 +36,7 @@ class Register:
         self._phone = phone
         self._password = hashlib.sha256((password + phone).encode()).hexdigest()
         self._name = name
-        self._nickname = None  # ✅ 닉네임은 profile_setup 단계에서 등록
+        self._nickname = None  #닉네임은 profile_setup 단계에서 등록
         self._gender = gender or "N"
         self._age = age
         self._bio = "none"
@@ -93,7 +95,7 @@ def get_db():
 # -----------------------------
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 def create_access_token(subject: str | int, extra: Optional[Dict[str, Any]] = None) -> str:
     payload: Dict[str, Any] = {"sub": str(subject)}
@@ -105,6 +107,37 @@ def create_access_token(subject: str | int, extra: Optional[Dict[str, Any]] = No
 def verify_legacy_password(plain_password: str, phone: str, stored_hash: str) -> bool:
     """기존 해시 로직과 동일한 방식으로 검증"""
     return hashlib.sha256((plain_password + phone).encode()).hexdigest() == stored_hash
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    Authorization: Bearer <token> 에서 JWT를 읽어서
+    sub(=user.id) 기준으로 현재 로그인 유저를 찾아 반환
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="인증 정보가 유효하지 않습니다.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        # JWT 디코딩
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if sub is None:
+            raise credentials_exception
+        user_id = int(sub)
+    except (JWTError, ValueError):
+        # 토큰 형식 오류 / 위조 / 만료 등
+        raise credentials_exception
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise credentials_exception
+
+    return user
 
 
 # -----------------------------

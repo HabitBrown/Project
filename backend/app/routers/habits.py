@@ -9,7 +9,8 @@ from app.database import SessionLocal
 from app.models.user import User
 from app.models.user_habit import UserHabit
 from app.models.habit import Habit
-from app.schemas.habit import HabitSearchItemOut, HabitCreateIn
+from app.schemas.habit import HabitSearchItemOut, HabitCreateIn, CompletedHabitItemOut
+from app.routers.register import get_current_user
 
 router = APIRouter(prefix="/habits", tags=["Habits"])
 
@@ -21,16 +22,6 @@ def get_db():
     finally:
         db.close()
 
-
-def get_current_user(db: Session = Depends(get_db)) -> User:
-    # TODO: 실제 JWT 인증 의존성으로 교체
-    user = db.query(User).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="사용자가 존재하지 않습니다.",
-        )
-    return user
 
 
 @router.post("", response_model=HabitSearchItemOut)
@@ -150,6 +141,48 @@ def search_habits(
                 period_start=user_habit.period_start,
                 period_end=user_habit.period_end,
                 deadline_local=user_habit.deadline_local,
+            )
+        )
+
+    return results
+
+
+@router.get("/me/completed", response_model=List[CompletedHabitItemOut])
+def get_my_completed_habits(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    마이페이지 - 완료된 습관 리스트 조회
+
+    전제:
+    - UserHabit.status 가 'completed_success' 또는 'completed_fail' 일 때 "완료된 습관"으로 본다.
+      (Enum 값은 네가 실제로 정의한 값에 맞게 수정)
+    """
+
+    query = (
+        db.query(UserHabit)
+        .filter(
+            UserHabit.user_id == current_user.id,
+            UserHabit.status.in_(["completed_success", "completed_fail"]),
+        )
+        .order_by(UserHabit.completed_at.desc())
+    )
+
+    rows = query.all()
+
+    results: List[CompletedHabitItemOut] = []
+    for uh in rows:
+        results.append(
+            CompletedHabitItemOut(
+                user_habit_id=uh.id,
+                title=uh.title,
+                method=uh.method,
+                difficulty=uh.difficulty,
+                period_start=uh.period_start,
+                period_end=uh.period_end,
+                status=uh.status,              # Enum → str
+                completed_at=uh.completed_at,
             )
         )
 

@@ -1,5 +1,5 @@
 # app/schemas/habit.py
-from datetime import date, time
+from datetime import date, time, datetime
 from typing import Optional
 from pydantic import BaseModel
 
@@ -28,3 +28,18 @@ class HabitCreateIn(BaseModel):
     deadline_local: time
     difficulty: int = 1
     source_habit_id: Optional[int] = None
+    
+class CompletedHabitItemOut(BaseModel):
+    user_habit_id: int
+    title: str
+    method: str
+    difficulty: int
+    period_start: date
+    period_end: date
+
+    # 모델에 추가해둔 상태/완료일 필드 사용
+    status: str
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
