@@ -113,7 +113,14 @@ class _HashScreenState extends State<HashScreen> {
             // 1) 바텀시트 닫기
             Navigator.of(ctx).pop();
 
-            // 2) 선택한 습관 정보로 FightSettingPage 열기
+            // ✅ 2) 수락했으니 도전장 목록에서 제거
+            setState(() {
+              if (idx >= 0 && idx < _challenges.length) {
+                _challenges.removeAt(idx);
+              }
+            });
+
+            // 3) 선택한 습관 정보로 FightSettingPage 열기
             final String habitTitle =
                 selectedHash['title']?.toString() ?? info.title;
             final int difficulty =
