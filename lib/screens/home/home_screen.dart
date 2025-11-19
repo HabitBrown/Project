@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 // 추가: 백엔드/로컬 저장 연동
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
+import '../../services/habit_service.dart';
 import '../../core/base_url.dart';
 import '../../services/home_service.dart';
 import '../../models/home_summary.dart';
@@ -88,6 +89,8 @@ class Dimens {
 enum HabitStatus { pending, verified, skipped }
 
 class HomeHabit {
+  final int userHabitId;
+
   String title;
   String time;
   String method;
@@ -95,6 +98,7 @@ class HomeHabit {
   HabitSetupData? source; // 설정에서 온 원본 (habit_setting.dart)
 
   HomeHabit({
+    required this.userHabitId,
     required this.title,
     required this.time,
     required this.method,
@@ -139,27 +143,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _summaryError;
 
   String? _avatarUrl; // 프로필 이미지 URL
-
-  List<HomeHabit> _seedToday() => [
-    HomeHabit(
-      title: '자기 전 스트레칭하기',
-      time: '20:00 ~ 24:00',
-      method: '사진',
-    ),
-    HomeHabit(
-      title: '퇴근 후 빨래 바로 돌리기',
-      time: '18:00 ~ 20:00',
-      method: '사진',
-    ),
-  ];
-
-  List<HomeHabit> _seedFighting() => [
-    HomeHabit(
-      title: '아침에 물 한잔 마시기',
-      time: '10:00 ~ 12:00',
-      method: '사진',
-    ),
-  ];
 
   @override
   void initState() {
@@ -295,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // 서버 DTO(dto.HomeHabit)를 UI용 HomeHabit으로 변환
         _today = data.todayHabits
             .map<HomeHabit>((dto.HomeHabit h) => HomeHabit(
+          userHabitId: h.userHabitId,
           title: h.title,
           time: h.time,
           method: h.method,
@@ -303,6 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _fighting = data.fightingHabits
             .map<HomeHabit>((dto.HomeHabit h) => HomeHabit(
+          userHabitId: h.userHabitId,
           title: h.title,
           time: h.time,
           method: h.method,
@@ -327,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return done(_today) + done(_fighting);
   }
 
-  // ✅ 지금은 HB/보너스 로직은 비워둔 상태 (필요하면 다시 활성화)
+  // 지금은 HB/보너스 로직은 비워둔 상태 (필요하면 다시 활성화)
   void _onHabitVerified() {
     setState(() {
       // 예전 HB 증가 로직은 주석 처리해 둠
@@ -366,19 +351,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (result == null) return;
 
+    // 공통 라벨
     final timeLabel = '${result.deadline} 까지';
     final methodLabel = result.certType == CertType.photo ? '사진' : '글';
 
-    setState(() {
-      if (editing == null) {
-        final newHabit = HomeHabit(
-          title: result.title,
-          time: timeLabel,
-          method: methodLabel,
-          source: result,
+    // =====================
+    // 1) 새 습관 만들기
+    // =====================
+    if (editing == null) {
+      try {
+        final created = await HabitService().createHabit(result);
+        final newId = created['user_habit_id'] as int;   // 백엔드 응답 필드명
+
+        setState(() {
+          final newHabit = HomeHabit(
+            userHabitId: newId,      // ★ 여기서 딱 한 번 사용
+            title: result.title,
+            time: timeLabel,
+            method: methodLabel,
+            source: result,
+          );
+          (toFighting ? _fighting : _today).add(newHabit);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('새 습관이 등록되었어요!')),
         );
-        (toFighting ? _fighting : _today).add(newHabit);
-      } else {
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('습관 생성 실패: $e')),
+        );
+      }
+      return; // 생성 모드 끝
+    }
+
+    // =====================
+    // 2) 기존 습관 수정하기
+    // =====================
+    try {
+      // editing.userHabitId 는 HomeHabit 에 추가된 필드
+      await HabitService().updateHabit(editing.userHabitId, result);
+
+      setState(() {
         final list = toFighting ? _fighting : _today;
         final idx = index ?? list.indexOf(editing);
         if (idx >= 0) {
@@ -388,8 +402,16 @@ class _HomeScreenState extends State<HomeScreen> {
             ..method = methodLabel
             ..source = result;
         }
-      }
-    });
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('습관이 수정되었어요!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('습관 수정 실패: $e')),
+      );
+    }
   }
 
   void _openEditList(bool toFighting) {
@@ -1107,10 +1129,12 @@ class _StatusPill extends StatelessWidget {
   });
 
   bool _isExpired(HomeHabit h) {
-    final now = DateTime.now().toUtc().add(const Duration(hours: 9));
+    // 한국 시간 기준
+    final now = DateTime.now();
 
+    // 1) source.deadline 우선 사용 (직접 만든 습관)
     final src = h.source;
-    if (src != null) {
+    if (src != null && src.deadline.isNotEmpty) {
       final parts = src.deadline.split(':');
       if (parts.length == 2) {
         final hh = int.tryParse(parts[0]);
@@ -1121,28 +1145,32 @@ class _StatusPill extends StatelessWidget {
           return now.isAfter(deadlineToday);
         }
       }
-      return false;
+      // 여기서 return 하지 않고 h.time 파싱으로 이어지게 한다
     }
 
-    final t = h.time;
-    if (t.contains('~')) {
-      final right = t.split('~').last.trim();
-      final parts = right.split(':');
-      if (parts.length == 2) {
-        int? hh = int.tryParse(parts[0]);
-        int? mm = int.tryParse(parts[1]);
-        if (hh != null && mm != null) {
-          if (hh == 24) {
-            hh = 23;
-            mm = 59;
-          }
-          final deadlineToday =
-          DateTime(now.year, now.month, now.day, hh, mm, 59);
-          return now.isAfter(deadlineToday);
-        }
+    // 2) time 문자열에서 HH:mm 형식 추출
+    // 예: "인증 시간: 23:59까지", "20:00 ~ 24:00", "09:00", 기타 모든 문자열 대응
+    final raw = h.time;
+    final regex = RegExp(r'(\d{1,2}):(\d{2})');
+    final match = regex.firstMatch(raw);
+
+    if (match != null) {
+      int hh = int.parse(match.group(1)!);
+      int mm = int.parse(match.group(2)!);
+
+      // 24:00 → 23:59 처리
+      if (hh == 24) {
+        hh = 23;
+        mm = 59;
       }
+
+      final deadlineToday =
+      DateTime(now.year, now.month, now.day, hh, mm, 59);
+
+      return now.isAfter(deadlineToday);
     }
 
+    // HH:mm 형식이 없다면 만료 아님
     return false;
   }
 

@@ -1,61 +1,313 @@
-1. user.py
+주요 도메인
+회원 & 소셜
+User, Interest, UserInterest, Follow
 
-User : 회원 정보 (전화번호, 닉네임, 성별, 나이, HB 잔액 등)
-Interest : 관심사 카테고리 목록 (예: 운동, 독서)
-UserInterest : 유저 ↔ 관심사 매핑 테이블 (다대다 관계)
-Follow : 팔로우/팔로잉 관계 저장
+습관 & 진행 현황
+Habit, UserHabit
 
-2. habit.py
+인증 & 분쟁
+Certification, Dispute
 
-Habit : 습관의 원형(템플릿).
-사용자가 처음 습관을 만들 때 저장되는 기본 정의 (제목, 설명).
-다른 유저가 교환을 통해 가져가면 여기서 파생됨.
+듀얼(내기) & 습관 교환
+Duel, ExchangeRequest
 
-3. user_habit.py
-UserHabit : 실제 유저가 수행하는 습관.
-Habit 을 기반으로 하되 기간, 요일, 인증 방식, 마감 시간, 활성 여부를 개별로 가짐.
-유저별 “오늘 해야 할 습관”을 보여줄 때 사용하는 핵심 테이블.
+미디어(사진 등)
+MediaAsset
 
-4. exchange.py
-ExchangeRequest : 다른 사람의 습관을 보고 “갖고 싶다” → 도전장 발송할 때 기록.
-상태값: pending / accepted / rejected / canceled.
-승리 시 습관 이름이 내 UserHabit 목록에 추가됨.
+코인(HB) 지갑
+WalletTransaction
 
-5. duel.py
-Duel : 두 사용자가 같은 습관으로 대결하는 1:1 매치.
-누가 도전했는지, 기간은 언제부터 언제까지인지, 결과(승/패/무승부/포기)를 저장.
-각자의 성공 횟수(owner_success_cnt, challenger_success_cnt)를 기록.
+뱃지 시스템
+Badge, UserBadge
 
-6. media.py
-MediaAsset : 사진 파일 메타데이터 저장소.
-사진 경로(URL), 촬영 시각(EXIF), 해시(sha256) 저장 → 치팅 방지용.
-인증(Certification)과 연결됨.
+샵 & 주문
+ShopItem, Order
 
-7. certification.py
-Certification : 습관 인증 결과 저장.
-언제, 어떤 방식(사진/글)으로 인증했는지 기록.
-사진이면 MediaAsset과 연결, 텍스트면 자유 입력.
-상태: 성공 / 실패.
+알림
+Notification
 
-8. dispute.py
-Dispute : 인증에 대한 이의제기.
-“사진이 이상하다”, “성공인데 실패로 처리됐다” 같은 문제 제기.
-상대방이 수락하면 정정, 응답 없으면 24시간 후 자동 기각.
+도메인별 상세
 
-9. wallet.py
-WalletTransaction : HB(코인) 원장.
-습관 성공/대결 승리 시 HB 추가, 포기 시 차감.
-모든 거래 내역을 남겨서 레벨 계산, 상점 구매 등에 활용.
+사용자
 
-10. notification.py
-Notification : 앱 내 알림 + 푸시 알림 기록.
-유형: 도전장, 인증 성공/실패, 이의제기, 시스템 메시지 등.
-읽음 여부(is_read) 포함.
+interface User {
+  id: number;
+  phone: string;            // 로그인 계정(전화번호, 고유)
+  password_hash: string;    // 프론트에 직접 내려주진 않을 가능성 큼
+  name: string;
+  nickname?: string | null; // 유니크, 닉네임 변경 가능
+  gender: "M" | "F" | "N";
+  age?: number | null;
+  bio?: string | null;      // 한 줄 소개
+  profile_picture?: string | null; // 프로필 이미지 URL
+  timezone: string;         // 기본 "Asia/Seoul"
+  hb_balance: number;       // 현재 HB 코인 잔고
+  created_at: string;       // ISO datetime
+}
 
-11. badge.py
-Badge : 앱에서 제공하는 배지 정의 (예: “3일 연속 성공”, “10승 달성”).
-UserBadge : 유저가 획득한 배지 기록.
 
-12. shop.py
-ShopItem : HB로 구매 가능한 상점 아이템 정의 (더미).
-Order : 유저가 상점에서 아이템 구매한 내역.
+
+관심사 (Interest, UserInterest)
+
+interface Interest {
+  id: number;
+  name: string;   // 예: "운동", "독서", "재테크"
+}
+
+interface UserInterest {
+  user_id: number;
+  interest_id: number;
+}
+유저 관심사는 N:N 구조
+
+
+
+팔로우 (Follow)
+
+interface Follow {
+  follower_id: number;      // 나
+  followee_id: number;      // 내가 팔로우하는 사람
+  created_at: string;
+}
+인스타그램식 팔로우/팔로잉 구조 (단방향)
+
+
+
+Habit & UserHabit (실제 사용 습관)
+
+interface Habit {
+  id: number;
+  owner_user_id: number;  // 이 습관을 만든 유저
+  title: string;
+  description?: string | null;
+  created_at: string;
+}
+“습관 템플릿” 느낌
+교환/듀얼 등에서 기준이 되는 원본 습관 정의
+
+
+
+UserHabit (유저가 실제로 진행 중인 습관)
+type AuthMethod = "photo" | "text";
+
+type UserHabitStatus =
+  | "active"
+  | "completed_success"
+  | "completed_fail"
+  | "canceled";
+
+interface UserHabit {
+  id: number;
+  user_id: number;
+  source_habit_id?: number | null; // Habit.id 연결 (없을 수도 있음)
+  title: string;                   // 실제 카드에 표시될 제목
+  method: AuthMethod;              // 인증 방식: 사진 / 텍스트
+  deadline_local: string;          // "HH:MM:SS" (로컬 기준 인증 마감 시간)
+  days_of_week: number;            // bitmask (예: 월~일, 비트 플래그)
+  period_start: string;            // "YYYY-MM-DD"
+  period_end: string;              // "YYYY-MM-DD"
+  is_active: boolean;              // 현재 진행 중인지 여부 (기간+상태와 별개)
+  created_at: string;
+  difficulty: number;              // 난이도(1~n)
+  status: UserHabitStatus;         // 진행 상태
+  completed_at?: string | null;    // 최종 종료(성공/실패/취소) 시각
+  duel_id?: number | null;         // 해당 습관이 듀얼과 연결된 경우
+}
+days_of_week(bitmask):
+
+1: 월, 2: 화, 4: 수, 8: 목, 16: 금, 32: 토, 64: 일
+
+
+
+인증 & 분쟁
+
+Certification (습관 인증 기록)
+
+type CertMethod = "photo" | "text";
+type CertStatus = "success" | "fail";
+
+interface Certification {
+  id: number;
+  user_id: number;
+  user_habit_id?: number | null;  // 어떤 UserHabit에 대한 인증인지
+  duel_id?: number | null;        // 듀얼에 걸린 인증이면 연결
+  ts_utc: string;                 // 실제 인증 시각(UTC 기준)
+  method: CertMethod;
+  text_content?: string | null;   // 텍스트 인증 내용
+  photo_asset_id?: number | null; // MediaAsset.id
+  status: CertStatus;             // 성공 / 실패
+  fail_reason?: string | null;    // 실패 시 이유(관리자/심판 측 판단)
+}
+
+프론트에서 “오늘 인증 히스토리” 같은 화면 만들 때 사용
+
+사진 인증인 경우 photo_asset_id → MediaAsset.storage_url로 실제 이미지 URL 확보
+
+
+Dispute (인증 결과 이의제기)
+type DisputeStatus = "open" | "accepted" | "rejected" | "expired";
+
+interface Dispute {
+  id: number;
+  certification_id: number;  // 어떤 인증에 대해 이의제기인지
+  raised_by: number;         // 이의 제기한 유저 id
+  reason_code: string;       // 사유 코드(프론트에서 텍스트 매핑 가능)
+  detail?: string | null;    // 상세 사유
+  status: DisputeStatus;
+  created_at: string;
+  expires_at: string;        // 자동 만료 시점
+  decided_at?: string | null;// 처리된 시점
+}
+인증 실패/성공 판정에 대해 유저가 이의신청하면 생성되는 레코드
+
+프론트에서 “분쟁 상태 배지/아이콘 표시”에 사용 가능
+
+
+Duel (내기) & Exchange (습관 교환)
+
+Duel (두 유저 간 내기/도전)
+
+type DuelMethod = "photo" | "text";
+type DuelStatus = "pending" | "active" | "finished" | "canceled";
+type DuelResult =
+  | "owner_win"
+  | "challenger_win"
+  | "draw"
+  | "forfeit_owner"
+  | "forfeit_challenger";
+
+interface Duel {
+  id: number;
+  owner_user_id: number;
+  challenger_user_id: number;
+  habit_title: string;       // 듀얼에서의 습관 이름(문자열로 고정)
+  method: DuelMethod;
+  deadline_local: string;    // HH:MM:SS
+  days_of_week: number;      // bitmask
+  start_date: string;        // YYYY-MM-DD
+  end_date: string;          // YYYY-MM-DD
+  difficulty: number;
+  status: DuelStatus;
+  result?: DuelResult | null;
+  owner_success_cnt: number;       // 진행 중/완료 후 성공 카운트
+  challenger_success_cnt: number;
+  grace_minutes: number;           // 지각 허용 시간(분)
+  created_at: string;
+}
+
+프론트에서 듀얼 카드 리스트, 디테일 화면 구성 시 사용
+
+status & result에 따라 UI 상태(대기/진행/완료/취소, 승패 표시) 변경
+
+
+
+ExchangeRequest (습관 교환 신청)
+
+type ExchangeStatus = "pending" | "accepted" | "rejected" | "canceled";
+
+interface ExchangeRequest {
+  id: number;
+  from_user_id: number;   // 요청을 보낸 유저
+  to_user_id: number;     // 요청을 받은 유저
+  target_habit_id: number;// Habit.id
+  status: ExchangeStatus;
+  created_at: string;
+  decided_at?: string | null;
+}
+프론트에서 “받은 교환 요청”, “보낸 교환 요청” 리스트에 사용
+status에 따라 버튼(수락/거절/취소 등) 상태 달라짐
+
+
+MediaAsset (사진/파일)
+interface MediaAsset {
+  id: number;
+  uploader_id?: number | null;    // 업로더가 사라질 수도 있어서 SET NULL
+  storage_url: string;            // 실제 이미지/파일 접근 URL
+  exif_taken_at?: string | null;  // 사진 촬영 시각 (있다면)
+  sha256?: string | null;         // 중복 체크용 해시
+  created_at: string;
+}
+인증 사진, 프로필 이미지 등에서 공통으로 사용 가능
+프론트는 주로 storage_url만 알면 됨
+
+
+Wallet (HB 코인 트랜잭션)
+
+interface WalletTransaction {
+  id: number;
+  user_id: number;
+  amount: number;          // +획득 / -차감
+  reason: string;          // 예: "duel_reward", "shop_purchase" 등
+  ref_table?: string | null; // 관련된 출처 테이블 이름(예: "orders", "duels")
+  ref_id?: number | null;    // 그 테이블의 id
+  created_at: string;
+}
+잔액(User.hb_balance)의 히스토리
+“코인 내역” 화면에서 각각의 레코드를 보여줄 때 사용
+
+
+
+Badge (업적 뱃지)
+
+interface Badge {
+  id: number;
+  name: string;             // 예: "첫 인증 성공"
+  description?: string | null;
+}
+
+interface UserBadge {
+  user_id: number;
+  badge_id: number;
+  awarded_at: string;
+}
+
+유저 프로필에서 뱃지 리스트를 보여줄 때 사용
+Badge 정의 + UserBadge 수여 기록
+
+
+Shop & Orders (샵/아이템 구매)
+
+interface ShopItem {
+  id: number;
+  category?: string | null; // 예: "profile", "theme", "booster"
+  name: string;
+  price_hb: number;         // 필요 HB 코인
+  image_url?: string | null;
+}
+
+type OrderStatus = "placed" | string; // 문자열 (세부 상태는 추후 확장 가능)
+
+interface Order {
+  id: number;
+  user_id: number;
+  item_id?: number | null;  // 삭제된 아이템이면 null 가능
+  status: OrderStatus;
+  created_at: string;
+  item?: ShopItem | null;   // 백엔드 응답에 따라 포함될 수 있음
+}
+프론트에서 상점 목록 / 구매 내역을 보여줄 때 사용
+주문 시 User.hb_balance와 WalletTransaction도 함께 변경될 수 있음
+
+Notification (알림)
+
+type NotificationType =
+  | "challenge"
+  | "challenge_accepted"
+  | "challenge_rejected"
+  | "cert_success"
+  | "cert_fail"
+  | "dispute"
+  | "system";
+
+interface Notification {
+  id: number;
+  user_id: number;
+  type: NotificationType;
+  title?: string | null;
+  body?: string | null;
+  deeplink?: string | null; // 앱 내 특정 화면으로 이동하는 URL/경로
+  is_read: boolean;         // 읽음 여부
+  created_at: string;
+}
+“알림센터” 화면의 리스트 데이터
+deeplink를 통해 알림 탭 클릭 시 특정 화면으로 바로 라우팅 가능

@@ -197,7 +197,7 @@ class _HabitSetupPageState extends State<HabitSetupPage> {
       deadline: deadline24,
     );
 
-    Navigator.of(context).pop(result);
+    Navigator.of(context).pop<HabitSetupData>(result);
   }
 
   bool _isValidHourMinute(String h, String m) {
