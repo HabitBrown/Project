@@ -1,9 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AppColors {
   static const cream = Color(0xFFFFF8E1);
@@ -30,6 +30,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   final _introCtrl = TextEditingController();
   final _habitCtrl = TextEditingController();
 
+  // ===== 백엔드 연동 관련 =====
   final _auth = AuthService();
   bool _saving = false;
   int? _userId;
@@ -38,8 +39,23 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   bool? _nickAvailable; // true=사용가능, false=중복, null=미확인
 
   String? _selectedGender;
-  final List<String> _interests = ['운동', '음식', '시험', '영화', '공부', '사진'];
+  final List<String> _interests = ['운동', '음식', '시험', '영화', '공부', '사진', '음악', '춤'];
   final List<String> _selectedInterests = [];
+
+  static const Map<String, int> _interestIdMap = {
+    '운동': 1,
+    '음식': 2,
+    '시험': 3,
+    '영화': 4,
+    '공부': 5,
+    '사진': 6,
+    '음악': 7,
+    '춤': 8,
+  };
+
+  final ImagePicker _picker = ImagePicker();
+  XFile? _profileImageFile;  // 로컬에서 고른 이미지 파일
+  String? _uploadedImageUrl; // 서버에 올라간 이미지 URL
 
   @override
   void initState() {
@@ -54,10 +70,6 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       }
     });
   }
-
-  final ImagePicker _picker = ImagePicker();
-  XFile? _profileImageFile;
-  String? _uploadedImageUrl;
 
   /// 회원가입 화면에서 전달된 값을 한 번만 초기 세팅
   Future<void> _pickImage(ImageSource source) async {
@@ -77,9 +89,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       );
     }
   }
-
+  /// 프로필 이미지가 선택되어 있다면 서버에 업로드
   Future<void> _uploadIfNeeded(int userId) async {
-    if (_profileImageFile == null) return; // 이미지 안 골랐으면 스킵
+    if (_profileImageFile == null) return;
 
     final url = await _auth.uploadProfilePicture(
       userId: userId,
@@ -91,10 +103,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     }
 
     setState(() {
-      _uploadedImageUrl = url; // 서버 URL 저장, UI에도 즉시 반영
+      _uploadedImageUrl = url;
     });
   }
-
 
   void _showImageSheet() {
     showModalBottomSheet(
@@ -139,7 +150,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   Future<void> _onSaveProfile() async {
     final nickname = _nicknameCtrl.text.trim();
 
-    // 기본 유효성 검사
+    // 간단 유효성: 닉네임은 필수로 체크
     if (nickname.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('닉네임을 입력해 주세요.')),
@@ -154,7 +165,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       return;
     }
 
-    //유저 ID 가져오기 (회원가입 후 전달받거나 SharedPreferences에서 가져옴)
+    // 유저 ID 가져오기 (회원가입 후 전달받거나 SharedPreferences에서 가져옴)
     var userId = _userId;
     if (userId == null) {
       final prefs = await SharedPreferences.getInstance();
@@ -168,22 +179,32 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       return;
     }
 
-    // 서버로 프로필 업데이트 요청
     setState(() => _saving = true);
     try {
       final genderEnum = _genderToEnum(_selectedGender);
-      final age = _ageCtrl.text.trim().isEmpty ? null : int.tryParse(_ageCtrl.text.trim());
+      final age = _ageCtrl.text.trim().isEmpty
+          ? null
+          : int.tryParse(_ageCtrl.text.trim());
 
-      // 1) 이미지가 선택되어 있으면 먼저 업로드 (서버가 profile_picture를 업데이트함)
+      final List<int> interestIds = _selectedInterests
+          .map((name) => _interestIdMap[name])
+          .where((id) => id != null)
+          .cast<int>()
+          .toList();
+
+      // 1) 이미지 업로드 (있다면)
       await _uploadIfNeeded(userId);
 
-      // 2) 닉/성별/나이/소개 업데이트
+      // 2) 프로필(닉네임/성별/나이/소개) 업데이트
       await _auth.updateProfile(
         userId: userId,
         nickname: nickname,
         gender: genderEnum,
         age: age,
-        bio: _introCtrl.text.trim().isEmpty ? null : _introCtrl.text.trim(),
+        bio: _introCtrl.text
+            .trim()
+            .isEmpty ? null : _introCtrl.text.trim(),
+        interests: interestIds,
       );
 
       if (!mounted) return;
@@ -191,7 +212,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
         const SnackBar(content: Text('프로필이 성공적으로 저장되었습니다.')),
       );
 
-      // 홈 화면으로 이동
+      // 홈 화면으로 이동 (프로필 정보 함께 전달)
       Navigator.pushNamedAndRemoveUntil(
         context,
         '/home',
@@ -218,7 +239,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 최초 1회만
+    // 최초 1회만 arguments에서 userId / nickname 가져오기
     if (_userId == null) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is Map) {
@@ -242,10 +263,14 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
   String? _genderToEnum(String? g) {
     switch (g) {
-      case '남': return 'M';
-      case '여': return 'F';
-      case '없음': return 'N';
-      default: return null;
+      case '남':
+        return 'M';
+      case '여':
+        return 'F';
+      case '없음':
+        return 'N';
+      default:
+        return null;
     }
   }
 
@@ -256,11 +281,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 상단 배경 + 프로필 이미지
+            // ===== 상단 배경 + 프로필 이미지 =====
             Stack(
               clipBehavior: Clip.none,
               children: [
-                // 히트영역을 넉넉히 확보(아바타+연필이 전부 Stack 영역 안에 들어오게)
                 const SizedBox(height: 220, width: double.infinity),
 
                 // 상단 배경
@@ -269,14 +293,14 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   color: AppColors.lightBrown.withOpacity(0.4),
                 ),
 
-                // 아바타 + 연필버튼(연필만 터치 가능)
+                // 아바타 + 연필 아이콘
                 Positioned(
-                  top: 60,   // 필요하면 미세조정
+                  top: 60,
                   left: 35,
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // 아바타 (서버/로컬/기본 아이콘 우선순위로 표시)
+                      // 아바타 (서버/로컬/기본 아이콘)
                       CircleAvatar(
                         radius: 55,
                         backgroundColor: AppColors.cream,
@@ -284,32 +308,43 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                           child: _uploadedImageUrl != null
                               ? Image.network(
                             _uploadedImageUrl!,
-                            width: 110, height: 110, fit: BoxFit.cover,
+                            width: 110,
+                            height: 110,
+                            fit: BoxFit.cover,
                           )
                               : (_profileImageFile != null
                               ? FutureBuilder<Uint8List>(
                             future: _profileImageFile!.readAsBytes(),
                             builder: (_, snap) {
                               if (!snap.hasData) {
-                                return const SizedBox(width: 110, height: 110);
+                                return const SizedBox(
+                                  width: 110,
+                                  height: 110,
+                                );
                               }
                               return Image.memory(
                                 snap.data!,
-                                width: 110, height: 110, fit: BoxFit.cover,
+                                width: 110,
+                                height: 110,
+                                fit: BoxFit.cover,
                               );
                             },
                           )
-                              : Icon(Icons.camera_alt, size: 40, color: AppColors.dark)),
+                              : Icon(
+                            Icons.camera_alt,
+                            size: 40,
+                            color: AppColors.dark,
+                          )),
                         ),
                       ),
 
-                      // 연필 아이콘 버튼(이것만 눌러서 동작)
+                      // 연필 아이콘 버튼
                       Positioned(
                         right: -2,
                         bottom: -2,
                         child: GestureDetector(
-                          behavior: HitTestBehavior.opaque, // 빈 공간 포함해 터치 허용
-                          onTap: _showImageSheet,           // ← 이미지 선택 바텀시트
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _showImageSheet,
                           child: Container(
                             width: 36,
                             height: 36,
@@ -325,7 +360,11 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                               ],
                             ),
                             alignment: Alignment.center,
-                            child: const Icon(Icons.edit, size: 16, color: Colors.white),
+                            child: const Icon(
+                              Icons.edit,
+                              size: 16,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
@@ -334,7 +373,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                 ),
               ],
             ),
-            // ✅ 여기서는 Positioned를 쓰지 않습니다 (Stack 밖이므로)
+
+            // ===== 아래 폼 영역 =====
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
@@ -342,23 +382,33 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                 children: [
                   const SizedBox(height: 80),
 
+                  // 닉네임 + 중복체크
                   _label('*닉네임'),
                   Row(
                     children: [
                       Expanded(
-                        child: _textField(_nicknameCtrl, hint: '닉네임을 입력하세요'),
+                        child: _textField(
+                          _nicknameCtrl,
+                          hint: '닉네임을 입력하세요',
+                        ),
                       ),
                       const SizedBox(width: 8),
                       ElevatedButton(
-                        onPressed: () async {
+                        onPressed: _saving
+                            ? null
+                            : () async {
                           final nickname = _nicknameCtrl.text.trim();
-                          if(nickname.isEmpty){
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('닉네임을 입력해 주세요.')),);
+                          if (nickname.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('닉네임을 입력해 주세요.')),
+                            );
                             return;
                           }
 
                           setState(() => _saving = true);
-                          final available = await _auth.checkNickname(nickname);
+                          final available =
+                          await _auth.checkNickname(nickname);
                           setState(() {
                             _saving = false;
                             _nickChecked = true;
@@ -369,11 +419,12 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                             SnackBar(
                               content: Text(
                                 available
-                                    ?'사용 가능 닉네임입니다.'
-                                    :'이미 사용중인 닉네임입니다.',
+                                    ? '사용 가능 닉네임입니다.'
+                                    : '이미 사용중인 닉네임입니다.',
                               ),
-                              backgroundColor:
-                              available ? Colors.green : AppColors.brick,
+                              backgroundColor: available
+                                  ? Colors.green
+                                  : AppColors.brick,
                             ),
                           );
                         },
@@ -399,8 +450,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                       ),
                     ],
                   ),
-
-                  if(_nickChecked)
+                  if (_nickChecked)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
@@ -418,11 +468,15 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                     ),
                   const SizedBox(height: 16),
 
+                  // 성별
                   _label('성별'),
                   DropdownButtonFormField<String>(
                     value: _selectedGender,
                     items: const ['남', '여', '없음']
-                        .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                        .map((g) => DropdownMenuItem(
+                      value: g,
+                      child: Text(g),
+                    ))
                         .toList(),
                     onChanged: (v) => setState(() => _selectedGender = v),
                     decoration: _inputDecoration(),
@@ -430,6 +484,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   ),
                   const SizedBox(height: 16),
 
+                  // 나이
                   _label('나이'),
                   _textField(
                     _ageCtrl,
@@ -438,10 +493,12 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   ),
                   const SizedBox(height: 16),
 
+                  // 한줄소개
                   _label('한줄소개'),
                   _textField(_introCtrl, hint: '자신을 소개해 주세요'),
                   const SizedBox(height: 16),
 
+                  // 관심사
                   _label('관심사'),
                   Container(
                     decoration: BoxDecoration(
@@ -480,37 +537,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  _label('습관 등록하기'),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _textField(_habitCtrl, hint: '습관 이름 입력'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () {
-                          // TODO: 습관 리스트에 추가하는 로직 연결
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('추가: ${_habitCtrl.text}')),
-                          );
-                          _habitCtrl.clear();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.green,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(48, 48),
-                        ),
-                        child: const Icon(Icons.add, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-
+                  // 저장 버튼
                   Center(
                     child: ElevatedButton(
-                      onPressed: _onSaveProfile, // ✅ 저장 → 홈으로
+                      onPressed: _saving ? null : _onSaveProfile,
                       style: ElevatedButton.styleFrom(
                         fixedSize: const Size(140, 55),
                         backgroundColor: AppColors.brick,
@@ -523,9 +553,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
                         ),
                         elevation: 3,
                       ),
-                      child: const Text(
-                        '저장',
-                        style: TextStyle(fontSize: 14, color: Colors.white),
+                      child: Text(
+                        _saving ? '저장 중...' : '저장',
+                        style:
+                        const TextStyle(fontSize: 14, color: Colors.white),
                       ),
                     ),
                   ),

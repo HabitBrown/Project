@@ -28,6 +28,22 @@ class UserHabit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     difficulty: Mapped[int] = mapped_column(SmallInteger, default=1, nullable=False)
     
+    # 진행 상태: 진행중 / 완료 / 실패 / 취소 등
+    status: Mapped[str] = mapped_column(
+        Enum(
+            "active",          # 진행 중
+            "completed_success",  # 성공으로 완료
+            "completed_fail",     # 실패로 완료
+            "canceled",           # 유저가 중간에 취소
+            name="user_habit_status_enum",
+        ),
+        nullable=False,
+        default="active",
+    )
+    
+    # 이 습관이 최종적으로 끝난 시점
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    
     duel_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
         ForeignKey("duels.id", ondelete="SET NULL"),

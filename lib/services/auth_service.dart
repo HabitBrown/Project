@@ -82,12 +82,14 @@ class AuthService {
     String? gender,
     int? age,
     String? bio,
+    List<int>? interests,
   }) async {
     final body = <String, dynamic>{
       if (nickname != null) 'nickname': nickname,
       if (gender != null) 'gender': gender,
       if (age != null) 'age': age,
       if (bio != null) 'bio': bio,
+      if (interests != null) 'interests': interests,
     };
 
     final res = await _client.put(

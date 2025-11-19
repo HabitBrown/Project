@@ -1,5 +1,5 @@
 # app/routers/home.py
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -11,6 +11,8 @@ from app.models.user_habit import UserHabit
 from app.models.duel import Duel
 from app.models.certification import Certification
 from app.schemas.home import HomeSummaryOut, HomeHabitItemOut
+
+from app.routers.register import get_current_user
 
 router = APIRouter(prefix="/home", tags=["Home"])
 
@@ -24,35 +26,14 @@ def get_db():
         db.close()
 
 
-# 실제 프로젝트에서 사용하는 current_user 의존성으로 교체해서 쓰면 됨
-def get_current_user(db: Session = Depends(get_db)) -> User:
-    # ⚠️ 임시 구현: 첫 번째 유저를 current_user로 사용
-    user = db.query(User).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="사용자가 존재하지 않습니다.",
-        )
-    return user
-
-
 @router.get("/summary", response_model=HomeSummaryOut)
 def get_home_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    홈 화면 요약 정보 + 오늘 습관 리스트
-
-    - today_cert_count: 오늘 인증 성공 횟수
-    - current_duel_count: 오늘 기준 진행 중인 결투 개수
-    - solo_habit_count: 혼자 하는(active) 습관 개수
-    - today_habits: 오늘 해야 하는 '혼자 습관' 목록
-    - fighting_habits: 오늘 기준 진행 중인 '듀얼 습관' 목록
-    """
-
+ 
     # 1) 오늘 날짜 (UTC 기준) - 나중에 타임존 로직 필요하면 교체
-    today: date = datetime.utcnow().date()
+    today: date = (datetime.utcnow() + timedelta(hours=9)).date()
 
     # 하루 시작/끝 (UTC 기준)
     start_utc = datetime.combine(today, time(0, 0, 0))
@@ -102,7 +83,9 @@ def get_home_summary(
 
     # 요일 비트마스크 계산: 월=0 ~ 일=6
     dow = today.weekday()
-    mask = 1 << dow
+    
+    dow_for_bit = (dow) % 7
+    mask = 1 << dow_for_bit
 
     solo_today = (
         solo_q.filter(

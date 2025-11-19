@@ -48,3 +48,14 @@ SHOW TABLES;
 
 백엔드 실행
 uvicorn app.main:app --reload
+
+초기 sql 삽입문
+INSERT INTO interests (id, name) VALUES
+  (1, '운동'),
+  (2, '음식'),
+  (3, '시험'),
+  (4, '영화'),
+  (5, '공부'),
+  (6, '사진'),
+  (7, '음악'),
+  (8, '춤');
