@@ -214,7 +214,7 @@ def get_my_completed_habits(
         db.query(UserHabit)
         .filter(
             UserHabit.user_id == current_user.id,
-            UserHabit.status.in_(["completed_success", "completed_fail"]),
+            UserHabit.status.in_(["completed_success"]),
         )
         .order_by(UserHabit.completed_at.desc())
     )

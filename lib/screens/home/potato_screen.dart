@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 
 // 이 파일에서는 Home 쪽에 있는 색/이미지 정의를 가져온다고 했으니까 그대로 둡니다.
 // home_screen.dart 안에 AppColors, AppImages 가 있다고 가정
+import '../../core/base_url.dart';
+import '../../models/farmer.dart';
+import '../../services/potato_service.dart';
 import 'home_screen.dart';
 import 'hash_screen.dart';
 
@@ -36,14 +39,18 @@ class _PotatoScreenState extends State<PotatoScreen> {
   List<Map<String, dynamic>> fellowFarmers = [];
 
   // 추천 농부
-  List<Map<String, dynamic>> recommendedFarmers = [];
+  List<FarmerSummary> recommendedFarmers = [];
 
   // 검색어
   String _searchKeyword = '';
 
+  // 2) _loadData에서 더미 제거하고, 서비스 호출로 교체
+  final _potatoService = PotatoService();
+
   @override
   void initState() {
     super.initState();
+    _hb = widget.hbCount;
     _loadData();
   }
 
@@ -59,80 +66,40 @@ class _PotatoScreenState extends State<PotatoScreen> {
     }
   }
 
-  /// 더미 데이터 세팅
-  void _loadData() {
-    final me = widget.me;
-    final myName = me?['nickname'] as String?;
-    final myAvatar = me?['avatarPath'] as String?;
-    final myIntro = me?['intro'] as String?;
-    final myInterests =
-        (me?['interests'] as List?)?.cast<String>() ?? const [];
+  Future<void> _loadData() async {
+    try {
+      final farmers = await _potatoService.fetchFarmers();
+      setState(() {
+        recommendedFarmers = farmers;
 
-    // 위에 보이는 농부들
-    fellowFarmers = [
-      if (myName != null) {'name': myName, 'avatarPath': myAvatar},
-    ];
-
-    // 추천 농부 (각 해시마다 title + difficulty 포함)
-    recommendedFarmers = [
-      {
-        'level': 6,
-        'name': '송강호',
-        'bio': '코딩을 좋아합니다.',
-        'tags': ['운동', '음식', '컴퓨터', '영화'],
-        'hashes': [
-          {'title': '아침 6시 기상', 'difficulty': 3},
-          {'title': '자기전에 스트레칭하기', 'difficulty': 2},
-        ],
-        'avatarPath': null,
-      },
-      {
-        'level': 3,
-        'name': '감자나라',
-        'bio': '요가 하고 있어요.',
-        'tags': ['요가', '건강'],
-        'hashes': [
-          {'title': '저녁 요가 10분', 'difficulty': 1},
-        ],
-        'avatarPath': null,
-      },
-      {
-        'level': 4,
-        'name': myName ?? '브라운러버',
-        'bio': myIntro ?? '매일 독서 중',
-        'tags': myInterests.isNotEmpty ? myInterests : ['독서', '자기계발'],
-        'hashes': [
-          {'title': '30분 독서', 'difficulty': 2},
-          {'title': '하루 회고 쓰기', 'difficulty': 4},
-        ],
-        'avatarPath': myAvatar,
-      },
-    ];
-
-    setState(() {});
+        fellowFarmers = farmers
+            .where((f) => f.isFollowing)
+            .map((f) => {
+              'userId': f.userId,
+              'name': f.name,
+              'avatarUrl': f.avatarUrl,
+            })
+            .toList();
+      });
+    } catch (e) {
+      // 에러 핸들링 (스낵바 등)
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('추천 농부 불러오기 실패: $e')),
+      );
+    }
   }
 
   /// 검색
-  List<Map<String, dynamic>> _filterByKeyword(String keyword) {
+  List<FarmerSummary> _filterByKeyword(String keyword) {
     if (keyword.trim().isEmpty) return recommendedFarmers;
     final kw = keyword.toLowerCase();
 
     return recommendedFarmers.where((farmer) {
-      final name = (farmer['name'] ?? '').toString().toLowerCase();
-      final bio = (farmer['bio'] ?? '').toString().toLowerCase();
-      final tags = (farmer['tags'] as List?)
-          ?.map((e) => e.toString().toLowerCase()) ??
-          const Iterable<String>.empty();
-
-      // hashes: [{title: ..., difficulty: ...}, ...] 구조 대응
-      final hashes = (farmer['hashes'] as List?)
-          ?.map((e) {
-        if (e is Map && e['title'] != null) {
-          return e['title'].toString().toLowerCase();
-        }
-        return e.toString().toLowerCase();
-      }) ??
-          const Iterable<String>.empty();
+      final name = farmer.name.toLowerCase();
+      final bio = farmer.bio.toLowerCase();
+      final tags = farmer.tags.map((e) => e.toLowerCase());
+      final hashes = farmer.hashes.map((h) => h.title.toLowerCase());
 
       if (name.contains(kw)) return true;
       if (bio.contains(kw)) return true;
@@ -143,16 +110,73 @@ class _PotatoScreenState extends State<PotatoScreen> {
   }
 
   /// 팔로우 → 위 캐러셀에 추가
-  void _handleFollow(Map<String, dynamic> farmer) {
-    final name = farmer['name'] as String? ?? '';
-    final exists = fellowFarmers.any((f) => f['name'] == name);
-    if (!exists) {
+  Future<void> _handleFollow(FarmerSummary farmer) async {
+    try {
+      await _potatoService.followFarmer(farmer.userId);
+
       setState(() {
-        fellowFarmers.add({
-          'name': name,
-          'avatarPath': farmer['avatarPath'],
-        });
+        // fellowFarmers 업데이트
+        final exists = fellowFarmers.any((f) => f['userId'] == farmer.userId);
+        if (!exists) {
+          fellowFarmers.add({
+            'userId': farmer.userId,
+            'name': farmer.name,
+            'avatarUrl': farmer.avatarUrl,
+          });
+        }
+
+        // recommendedFarmers 안의 isFollowing도 true로 바꿔주기
+        recommendedFarmers = recommendedFarmers.map((f) {
+          if (f.userId == farmer.userId) {
+            return FarmerSummary(
+              userId: f.userId,
+              name: f.name,
+              bio: f.bio,
+              tags: f.tags,
+              avatarUrl: f.avatarUrl,
+              hashes: f.hashes,
+              isFollowing: true,
+            );
+          }
+          return f;
+        }).toList();
       });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('팔로우 실패: $e')),
+      );
+    }
+  }
+
+  /// 언팔로우 → 캐러셀에서 제거
+  Future<void> _handleUnfollow(FarmerSummary farmer) async {
+    try {
+      await _potatoService.unfollowFarmer(farmer.userId);
+
+      setState(() {
+        fellowFarmers.removeWhere((f) => f['userId'] == farmer.userId);
+
+        recommendedFarmers = recommendedFarmers.map((f) {
+          if (f.userId == farmer.userId) {
+            return FarmerSummary(
+              userId: f.userId,
+              name: f.name,
+              bio: f.bio,
+              tags: f.tags,
+              avatarUrl: f.avatarUrl,
+              hashes: f.hashes,
+              isFollowing: false,
+            );
+          }
+          return f;
+        }).toList();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('언팔로우 실패: $e')),
+      );
     }
   }
 
@@ -181,9 +205,10 @@ class _PotatoScreenState extends State<PotatoScreen> {
   }
 
   /// 교환하기 → fight_setting.dart 열기
-  Future<void> _openFightSetting(Map<String, dynamic> hash) async {
-    final String habitTitle = hash['title']?.toString() ?? '';
-    final int baseDifficulty = (hash['difficulty'] as int?) ?? 1;
+  Future<void> _openFightSetting(HashSummary hash) async {
+
+    final String habitTitle = hash.title;
+    final int baseDifficulty = hash.difficulty;
 
     // TODO: 나중에 이 값들은 실제 원본 습관 정보로 교체 가능
     const String defaultDeadline = '21:30';
@@ -261,9 +286,7 @@ class _PotatoScreenState extends State<PotatoScreen> {
                               child: ListView.separated(
                                 controller: _mateCtrl,
                                 scrollDirection: Axis.horizontal,
-                                itemCount: fellowFarmers.length < 4
-                                    ? 4
-                                    : fellowFarmers.length,
+                                itemCount: fellowFarmers.length,
                                 separatorBuilder: (_, __) =>
                                 const SizedBox(width: 14),
                                 itemBuilder: (context, index) {
@@ -297,7 +320,7 @@ class _PotatoScreenState extends State<PotatoScreen> {
                                       _ProfileCircle(
                                         size: 58,
                                         avatarPath:
-                                        farmer['avatarPath'] as String?,
+                                        farmer['avatarUrl'] as String?,
                                       ),
                                       const SizedBox(height: 6),
                                       SizedBox(
@@ -376,22 +399,18 @@ class _PotatoScreenState extends State<PotatoScreen> {
                         separatorBuilder: (_, __) =>
                         const SizedBox(height: 55),
                         itemBuilder: (context, index) {
+
                           final data = visibleFarmers[index];
-                          final name = data['name'] as String? ?? '';
-                          final isFollowing =
-                          fellowFarmers.any((f) => f['name'] == name);
+                          final isFollowing = fellowFarmers.any((f) => f['userId'] == data.userId);
                           return _FarmerCard(
-                            level: data['level'] ?? 1,
-                            name: name,
-                            bio: data['bio'] ?? '',
-                            tags: (data['tags'] as List?)?.cast<String>() ??
-                                const [],
-                            hashes: (data['hashes'] as List?)
-                                ?.cast<Map<String, dynamic>>() ??
-                                const [],
-                            avatarPath: data['avatarPath'] as String?,
-                            isFollowing: isFollowing,
+                            name: data.name,
+                            bio: data.bio,
+                            tags: data.tags,
+                            hashes: data.hashes,
+                            avatarPath: data.avatarUrl,
+                            isFollowing: data.isFollowing,
                             onFollow: () => _handleFollow(data),
+                            onUnfollow: () => _handleUnfollow(data),
                             onExchangeHash: (hash) => _openFightSetting(hash),
                           );
                         },
@@ -586,8 +605,7 @@ class _ProfileCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasImage = avatarPath != null &&
-        avatarPath!.isNotEmpty &&
-        File(avatarPath!).existsSync();
+        avatarPath!.isNotEmpty;
 
     return Container(
       width: size,
@@ -597,12 +615,11 @@ class _ProfileCircle extends StatelessWidget {
       ),
       child: ClipOval(
         child: hasImage
-            ? Image.file(
-          File(avatarPath!),
+            ? Image.network(
+          '$kBaseUrl${avatarPath!}',
           fit: BoxFit.cover,
         )
-            : Container(
-          color: const Color(0xFFDADADA),
+            : Container(color: const Color(0xFFDADADA),
         ),
       ),
     );
@@ -739,26 +756,26 @@ class _RecommendButton extends StatelessWidget {
 
 class _FarmerCard extends StatelessWidget {
   const _FarmerCard({
-    required this.level,
     required this.name,
     required this.bio,
     required this.tags,
     required this.hashes,
     required this.avatarPath,
     required this.isFollowing,
+    required this.onUnfollow,
     required this.onFollow,
     required this.onExchangeHash,
   });
 
-  final int level;
   final String name;
   final String bio;
   final List<String> tags;
-  final List<Map<String, dynamic>> hashes;
+  final List<HashSummary> hashes;
   final String? avatarPath;
   final bool isFollowing;
   final VoidCallback onFollow;
-  final void Function(Map<String, dynamic> hash) onExchangeHash;
+  final VoidCallback onUnfollow;
+  final void Function(HashSummary hash) onExchangeHash;
 
   @override
   Widget build(BuildContext context) {
@@ -776,7 +793,7 @@ class _FarmerCard extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        'Lv.$level   $name',
+                        name,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
@@ -784,11 +801,10 @@ class _FarmerCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       InkWell(
-                        onTap: isFollowing ? null : onFollow,
+                        onTap: isFollowing ? onUnfollow : onFollow,
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: isFollowing
                                 ? const Color(0xFFBAD3EC)
@@ -834,13 +850,14 @@ class _FarmerCard extends StatelessWidget {
 }
 
 class _MadeHashBrownBox extends StatelessWidget {
+
   const _MadeHashBrownBox({
     required this.hashes,
     this.onExchangeHash,
   });
 
-  final List<Map<String, dynamic>> hashes;
-  final void Function(Map<String, dynamic> hash)? onExchangeHash;
+  final List<HashSummary> hashes;
+  final void Function(HashSummary hash)? onExchangeHash;
 
   @override
   Widget build(BuildContext context) {
@@ -860,8 +877,8 @@ class _MadeHashBrownBox extends StatelessWidget {
               children: [
                 for (final h in hashes)
                   _MadeHashRow(
-                    title: h['title']?.toString() ?? '',
-                    difficulty: (h['difficulty'] as int?) ?? 1,
+                    title: h.title,
+                    difficulty: h.difficulty,
                     onExchange: () => onExchangeHash?.call(h),
                   ),
               ],

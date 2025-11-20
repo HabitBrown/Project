@@ -113,7 +113,14 @@ class _HashScreenState extends State<HashScreen> {
             // 1) 바텀시트 닫기
             Navigator.of(ctx).pop();
 
-            // 2) 선택한 습관 정보로 FightSettingPage 열기
+            // ✅ 2) 수락했으니 도전장 목록에서 제거
+            setState(() {
+              if (idx >= 0 && idx < _challenges.length) {
+                _challenges.removeAt(idx);
+              }
+            });
+
+            // 3) 선택한 습관 정보로 FightSettingPage 열기
             final String habitTitle =
                 selectedHash['title']?.toString() ?? info.title;
             final int difficulty =
@@ -1018,25 +1025,33 @@ class _RivalCard extends StatelessWidget {
                     ),
                     if (showRightButton)
                       SizedBox(
-                        width: buttonWidth,
-                        child: Center(
-                          child: Transform.translate(
-                            offset: const Offset(-45, 5),
-                            child: const Text(
-                              '라이벌\n보러가기',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w400,
-                                fontSize: 11,
-                                height: 1.3,
+                          width: buttonWidth,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Transform.translate(
+                              offset: const Offset(0, 6),
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 24,
+                                  bottom: 0,
+                                ),
+                                child: const Text(
+                                  '라이벌\n보러가기',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w400,
+                                    fontSize: 11,
+                                    height: 1.3,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
+                          )
                       )
                     else
                       SizedBox(width: buttonWidth),
+
                   ],
                 ),
               ),
