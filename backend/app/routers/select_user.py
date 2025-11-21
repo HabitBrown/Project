@@ -2,6 +2,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.user import User, UserInterest, Interest, Follow
 from app.models.user_habit import UserHabit
+from app.models.habit import Habit
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 
@@ -47,11 +48,20 @@ class UserInfo(object):
             hashes: list[dict] = []
             
             for uh  in completed:
+                
+                habit_id = uh.source_habit_id
+                
+                if habit_id is None:
+                    continue
+                
+                deadline_str = uh.deadline_local.strftime("%H:%M")
                 hashes.append(
                         {
-                            "hash_id": uh.id,
+                            "hash_id": habit_id,
                             "title": uh.title,
                             "difficulty": uh.difficulty,
+                            "deadline": deadline_str,
+                            "cert_type": uh.method,
                         }
                 )
 

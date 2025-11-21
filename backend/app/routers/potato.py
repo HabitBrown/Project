@@ -47,6 +47,11 @@ def get_farmers(
         if not info:
             continue
         
+        # 완료된 습관이 하나도 없는 유저는 스킵
+        hashes = info.get("hashes") or []
+        if not hashes:
+            continue
+        
         info["is_following"] = u.id in followed_ids
 
         # info(dict)의 키가 스키마(FarmerSummary) 필드랑 같다고 가정

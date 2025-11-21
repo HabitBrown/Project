@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 // home_screen.dart 안에 AppColors, AppImages 가 있다고 가정
 import '../../core/base_url.dart';
 import '../../models/farmer.dart';
+import '../../services/exchange_service.dart';
 import '../../services/potato_service.dart';
 import 'home_screen.dart';
 import 'hash_screen.dart';
@@ -206,13 +207,14 @@ class _PotatoScreenState extends State<PotatoScreen> {
 
   /// 교환하기 → fight_setting.dart 열기
   Future<void> _openFightSetting(HashSummary hash) async {
-
+    
     final String habitTitle = hash.title;
     final int baseDifficulty = hash.difficulty;
 
-    // TODO: 나중에 이 값들은 실제 원본 습관 정보로 교체 가능
-    const String defaultDeadline = '21:30';
-    const CertType defaultCertType = CertType.photo; // 인증 방식(수정 불가)
+    final int targetHabitId = hash.hashId;
+
+    final String defaultDeadline = hash.deadline;
+    final CertType defaultCertType = hash.certType; // 인증 방식(수정 불가)
 
     final result = await Navigator.push<HabitSetupData>(
       context,
@@ -226,12 +228,16 @@ class _PotatoScreenState extends State<PotatoScreen> {
       ),
     );
 
-    if (!mounted) return;
+    if (!mounted || result == null) return;
 
-    // result 사용하고 싶으면 여기에서 처리
-    if (result != null) {
+    try {
+      await ExchangeService().sendExchangeRequest(result, targetHabitId);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('교환 설정 완료: ${result.title}')),
+        const SnackBar(content: Text('교환 요청을 보냈어요!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('교환 요청 실패: $e')),
       );
     }
   }

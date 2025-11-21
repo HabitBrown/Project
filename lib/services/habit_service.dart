@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/base_url.dart';
+import '../models/farmer.dart';
 import '../screens/home/habit_setting.dart';
 
 class HabitService {

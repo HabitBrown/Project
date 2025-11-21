@@ -1,6 +1,7 @@
 // lib/screens/home/fight_setting.dart
 
 import 'package:flutter/material.dart';
+import '../../models/farmer.dart';
 import 'home_screen.dart';
 import 'habit_setting.dart' show HabitSetupData, CertType, HabitSetupLogoPath;
 

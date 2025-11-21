@@ -1,14 +1,19 @@
 // lib/models/farmer.dart
+enum CertType { photo, text }
 
 class HashSummary {
   final int hashId;
   final String title;
   final int difficulty;
+  final String deadline;
+  final CertType certType;
 
   HashSummary({
     required this.hashId,
     required this.title,
     required this.difficulty,
+    required this.deadline,
+    required this.certType,
   });
 
   factory HashSummary.fromJson(Map<String, dynamic> json) {
@@ -16,6 +21,10 @@ class HashSummary {
       hashId: json['hash_id'] as int,
       title: json['title'] as String,
       difficulty: json['difficulty'] as int,
+      deadline: json['deadline'] as String,
+      certType: (json['cert_type'] == 'photo')
+          ? CertType.photo
+          : CertType.text,
     );
   }
 
@@ -23,6 +32,8 @@ class HashSummary {
     'hash_id': hashId,
     'title': title,
     'difficulty': difficulty,
+    'deadline': deadline,
+    'cert_type': certType == CertType.photo ? 'photo' : 'text',
   };
 }
 

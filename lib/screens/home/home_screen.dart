@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 // 추가: 백엔드/로컬 저장 연동
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../models/farmer.dart';
 import '../../services/auth_service.dart';
 import '../../services/habit_service.dart';
 import '../../core/base_url.dart';
@@ -167,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _syncUserFromServer();  // 서버에서 유저 정보 동기화
     _loadHomeSummary();     // 홈 요약(오늘/싸우는 습관 리스트)
   }
+
 
   @override
   void dispose() {

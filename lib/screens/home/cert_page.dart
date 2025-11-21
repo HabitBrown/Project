@@ -1,6 +1,7 @@
 // 인증하기 창
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../models/farmer.dart';
 import 'habit_setting.dart';
 import 'package:image_picker/image_picker.dart';
 

@@ -1,6 +1,7 @@
 // lib/screens/home/habit_setting.dart
 
 import 'package:flutter/material.dart';
+import '../../models/farmer.dart';
 import 'home_screen.dart';  // ✅ AppColors 가져오기
 
 /// 백엔드에 던지기 쉽게 만들어둔 DTO
@@ -23,8 +24,6 @@ class HabitSetupData {
     required this.deadline,
   });
 }
-
-enum CertType { photo, text }
 
 const HabitSetupLogoPath = 'lib/assets/image2/habit_setting_icon.png';
 

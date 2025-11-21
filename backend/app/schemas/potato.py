@@ -1,5 +1,5 @@
 # app/schemas/potato.py
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, ConfigDict
 
 
@@ -7,6 +7,8 @@ class HashSummary(BaseModel):
     hash_id: int
     title: str
     difficulty: int
+    deadline: str              # "HH:MM"
+    cert_type: Literal["photo", "text"]
 
     model_config = ConfigDict(from_attributes=True)
 
