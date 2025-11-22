@@ -20,6 +20,111 @@ class HashFightColors {
 /// -----------------------------
 /// DTO / 구조체 정의
 /// -----------------------------
+/// ===== 백엔드 Certification DTO =====
+
+enum CertMethod { photo, text }
+enum CertStatus { success, fail }
+
+class Certification {
+  final int id;
+  final int userId;
+  final int? userHabitId;
+  final int? duelId;
+  final DateTime tsUtc;
+  final CertMethod method;
+  final CertStatus status;
+  final String? textContent;
+  final int? photoAssetId;
+  final String? failReason;
+
+  Certification({
+    required this.id,
+    required this.userId,
+    required this.userHabitId,
+    required this.duelId,
+    required this.tsUtc,
+    required this.method,
+    required this.status,
+    this.textContent,
+    this.photoAssetId,
+    this.failReason,
+  });
+
+  /// 백엔드 JSON → Certification
+  factory Certification.fromJson(Map<String, dynamic> json) {
+    return Certification(
+      id: json['id'] as int,
+      userId: json['user_id'] as int,
+      userHabitId: json['user_habit_id'] as int?,
+      duelId: json['duel_id'] as int?,
+      tsUtc: DateTime.parse(json['ts_utc'] as String),
+      method: (json['method'] == 'photo')
+          ? CertMethod.photo
+          : CertMethod.text,
+      status: (json['status'] == 'success')
+          ? CertStatus.success
+          : CertStatus.fail,
+      textContent: json['text_content'] as String?,
+      photoAssetId: json['photo_asset_id'] as int?,
+      failReason: json['fail_reason'] as String?,
+    );
+  }
+}
+
+
+//매핑 함수
+/// Certification → HashFightMessage 변환
+HashFightMessage certificationToHashFightMessage({
+  required Certification cert,
+  required int myUserId,        // 내가 누구인지
+  required String habitTitle,   // 습관 이름 (필요하면 서버에서 같이 내려줌)
+  String? photoUrl,             // photo_asset_id → storage_url 로 변환한 값
+}) {
+  // 1) 누가 보낸 건지 (나 vs 상대)
+  final sender = (cert.userId == myUserId)
+      ? HashFightSender.me
+      : HashFightSender.partner;
+
+  // 2) 메시지 타입 매핑
+  late HashFightMessageType type;
+
+  if (cert.status == CertStatus.success) {
+    // 성공인 경우 → method가 photo인지 text인지에 따라
+    if (cert.method == CertMethod.photo) {
+      type = HashFightMessageType.photo;
+    } else {
+      type = HashFightMessageType.text;
+    }
+  } else {
+    // 실패인 경우 → failReason에 따라 구분하고 싶으면 여기서 분기
+    if (cert.failReason == 'TIME_OVER') {
+      type = HashFightMessageType.failTime;
+    } else {
+      // 예: NO_PHOTO, NO_TEXT 등
+      type = HashFightMessageType.wrongCert;
+    }
+  }
+
+  return HashFightMessage(
+    id: cert.id.toString(),
+    createdAt: cert.tsUtc.toLocal(),  // UTC → 로컬 시간
+    habitTitle: habitTitle,
+    sender: sender,
+    type: type,
+    imageUrl: (cert.method == CertMethod.photo) ? photoUrl : null,
+    text: (cert.method == CertMethod.text)
+        ? cert.textContent
+        : cert.failReason,   // 실패 말풍선에 보여줄 문구로 사용
+  );
+}
+
+
+
+
+
+
+
+
 
 /// 누가 보낸 메시지인가
 enum HashFightSender { me, partner }
@@ -102,7 +207,7 @@ class _HashFightPageState extends State<HashFightPage> {
   String? _targetMessageId;
 
   bool _reasonPhotoWrong = false;
-  bool _reasonAlreadyCertified = false;
+
   bool _reasonEtc = false;
   final TextEditingController _etcController = TextEditingController();
   bool _showGiveUpDialog = false;
@@ -190,11 +295,11 @@ class _HashFightPageState extends State<HashFightPage> {
         centerTitle: false,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 12.0),
-            child: TextButton.icon(
+            padding: const EdgeInsets.only(right: 14.0),
+            child: TextButton(
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
+                  horizontal: 13,
                   vertical: 4,
                 ),
                 backgroundColor: HashFightColors.cream,
@@ -204,23 +309,32 @@ class _HashFightPageState extends State<HashFightPage> {
               ),
               onPressed: () {
                 setState(() {
-                  _showGiveUpDialog = true; // 내기 포기 팝업 ON
-                  _showObjection = false; // 이의제기 팝업 OFF
+                  _showGiveUpDialog = true;  // 내기 포기 팝업 ON
+                  _showObjection = false;    // 이의제기 팝업 OFF
                 });
               },
-              icon: const Icon(
-                Icons.pets,
-                size: 18,
-                color: HashFightColors.brown,
-              ),
-              label: const Text(
-                '포기\n하기',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: HashFightColors.brown,
-                  height: 1.1,
-                ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 🔥 이미지 넣는 자리 (경로 수정!)
+                  Image.asset(
+                    'lib/assets/image2/sad_potato.png',
+                    width: 20,
+                    height: 20,
+                  ),
+
+                  const SizedBox(width: 7),
+
+                  const Text(
+                    '포기\n하기',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: HashFightColors.brown,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -570,7 +684,6 @@ class _HashFightPageState extends State<HashFightPage> {
       _showObjection = true;
       _showGiveUpDialog = false;
       _reasonPhotoWrong = false;
-      _reasonAlreadyCertified = false;
       _reasonEtc = false;
       _etcController.clear();
     });
@@ -641,6 +754,7 @@ class _HashFightPageState extends State<HashFightPage> {
                       child: const Text(
                         '예',
                         style: TextStyle(
+                          fontSize: 11,
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
@@ -671,6 +785,7 @@ class _HashFightPageState extends State<HashFightPage> {
                       child: const Text(
                         '아니요',
                         style: TextStyle(
+                          fontSize: 11,
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
@@ -689,12 +804,9 @@ class _HashFightPageState extends State<HashFightPage> {
                       shape: BoxShape.circle,
                       color: HashFightColors.cream,
                     ),
-                    // TODO: 나중에 실제 우는 감자 이미지로 교체
-                    child: const Icon(
-                      Icons.sentiment_dissatisfied,
-                      color: HashFightColors.brown,
-                      size: 32,
-                    ),
+                    child:
+                    Image.asset('lib/assets/image2/sad_potato.png'),
+
                   ),
                 ),
               ],
@@ -709,103 +821,112 @@ class _HashFightPageState extends State<HashFightPage> {
   //   이의제기 팝업
   // -------------------------------
   Widget _buildObjectionDialog(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 260,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: HashFightColors.divider),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '이의 제기 하기!',
-                style: TextStyle(
-                  color: HashFightColors.brick,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        setState(() {
+          _showObjection = false;
+        });
+      },
+      child: Center(
+        child: GestureDetector(
+          onTap: () {},  // 팝업 내부는 닫히지 않게
+          child: Container(
+            width: 260,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: HashFightColors.divider),
             ),
-            const SizedBox(height: 12),
-            _buildCheckRow(
-              value: _reasonPhotoWrong,
-              label: '인증 사진/글이 잘못됐어요',
-              onChanged: (v) => setState(() => _reasonPhotoWrong = v ?? false),
-            ),
-            const SizedBox(height: 6),
-            _buildCheckRow(
-              value: _reasonEtc,
-              label: '기타',
-              onChanged: (v) => setState(() => _reasonEtc = v ?? false),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _etcController,
-              maxLines: 1,
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(4),
-                  borderSide: const BorderSide(color: HashFightColors.divider),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 36,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: HashFightColors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  elevation: 0,
-                ),
-                onPressed: () {
-                  if (_targetMessageId == null) {
-                    setState(() => _showObjection = false);
-                    return;
-                  }
-
-                  // 나중에 백엔드 연결되면 이 payload 를 API에 넘기면 됨
-                  final payload = HashObjectionPayload(
-                    messageId: _targetMessageId!,
-                    reasonPhotoWrong: _reasonPhotoWrong,
-                    reasonEtc: _reasonEtc,
-                    etcContent: _etcController.text.trim(),
-                  );
-
-                  // 지금은 그냥 닫기만
-                  // (원하면 디버그 print(payload.messageId) 이런 거 찍어봐도 됨)
-                  setState(() {
-                    _showObjection = false;
-                  });
-                },
-                child: const Text(
-                  '제출',
-                  style: TextStyle(
-                    color: HashFightColors.dark,
-                    fontWeight: FontWeight.w600,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '이의 제기 하기!',
+                    style: TextStyle(
+                      color: HashFightColors.brick,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                _buildCheckRow(
+                  value: _reasonPhotoWrong,
+                  label: '인증 사진/글이 잘못됐어요',
+                  onChanged: (v) => setState(() => _reasonPhotoWrong = v ?? false),
+                ),
+                const SizedBox(height: 6),
+                _buildCheckRow(
+                  value: _reasonEtc,
+                  label: '기타',
+                  onChanged: (v) => setState(() => _reasonEtc = v ?? false),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _etcController,
+                  maxLines: 1,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      borderSide: const BorderSide(color: HashFightColors.divider),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 36,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: HashFightColors.green,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: () {
+                      if (_targetMessageId == null) {
+                        setState(() => _showObjection = false);
+                        return;
+                      }
+
+                      final payload = HashObjectionPayload(
+                        messageId: _targetMessageId!,
+                        reasonPhotoWrong: _reasonPhotoWrong,
+                        reasonEtc: _reasonEtc,
+                        etcContent: _etcController.text.trim(),
+                      );
+
+                      setState(() {
+                        _showObjection = false;
+                      });
+                    },
+                    child: const Text(
+                      '제출',
+                      style: TextStyle(
+                        color: HashFightColors.dark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
+
 
   Widget _buildCheckRow({
     required bool value,
