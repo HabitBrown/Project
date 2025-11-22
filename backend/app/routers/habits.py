@@ -1,6 +1,6 @@
 # app/routers/habits.py
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from app.database import SessionLocal
 from app.models.user import User
 from app.models.user_habit import UserHabit
 from app.models.habit import Habit
+from app.models.certification import Certification 
 from app.schemas.habit import HabitSearchItemOut, HabitCreateIn, CompletedHabitItemOut
 from app.routers.register import get_current_user
 
@@ -22,7 +23,97 @@ def get_db():
     finally:
         db.close()
 
+def _iter_scheduled_dates(user_habit: UserHabit):
+    """
+    이 UserHabit이 실제로 인증해야 하는 '날짜들'을 모두 생성해주는 제너레이터.
+    days_of_week는 1~7(월~일) 비트마스크라고 가정.
+    """
+    if not user_habit.period_start or not user_habit.period_end:
+        return
 
+    mask = user_habit.days_of_week or 0
+    cur = user_habit.period_start
+    last = user_habit.period_end
+
+    # SQLAlchemy Date → Python date 라고 가정
+    while cur <= last:
+        # isoweekday(): 월=1, ..., 일=7
+        w = cur.isoweekday()
+        if mask & (1 << (w - 1)):
+            yield cur
+        cur += timedelta(days=1)
+
+def _evaluate_single_habit(db: Session, habit: UserHabit, now_utc: datetime, success_ratio: float = 0.7):
+    """
+    하나의 UserHabit에 대해, 도전 기간이 끝났다면
+    인증 성공률을 계산해서 completed_success / completed_fail 로 바꿔준다.
+    """
+
+    # 이미 끝난 습관은 건드리지 않음
+    if habit.status != "active":
+        return
+
+    if habit.period_end is None or habit.period_start is None:
+        return
+
+    # 한국 시간 기준 오늘 > period_end 일 때만 평가
+    KST = timezone(timedelta(hours=9))
+    now_kst = now_utc.astimezone(KST)
+
+    if now_kst.date() <= habit.period_end:
+        # 아직 도전 기간이 안 끝났음
+        return
+
+    # 1) 원래 인증해야 하는 날짜 목록
+    scheduled_dates = list(_iter_scheduled_dates(habit))
+
+    if not scheduled_dates:
+        # 인증해야 할 날이 없다면 실패로 처리 (혹은 그냥 무시도 가능)
+        habit.status = "completed_fail"
+        habit.completed_at = now_utc
+        return
+
+    # 2) 해당 기간 동안의 성공 인증 가져오기
+    #    (KST 기준 날짜 범위를 UTC로 변환해서 조회)
+    first_day = scheduled_dates[0]
+    last_day = scheduled_dates[-1]
+
+    start_kst = datetime(first_day.year, first_day.month, first_day.day, tzinfo=KST)
+    end_kst = datetime(last_day.year, last_day.month, last_day.day, tzinfo=KST) + timedelta(days=1)
+
+    start_utc = start_kst.astimezone(timezone.utc)
+    end_utc = end_kst.astimezone(timezone.utc)
+
+    certs = (
+        db.query(Certification)
+        .filter(
+            Certification.user_id == habit.user_id,
+            Certification.user_habit_id == habit.id,
+            Certification.status == "success",
+            Certification.ts_utc >= start_utc,
+            Certification.ts_utc < end_utc,
+        )
+        .all()
+    )
+
+    # 성공한 '날짜'만 추려서 집합으로 (중복 인증 방지)
+    success_dates = set()
+    for c in certs:
+        d = c.ts_utc.astimezone(KST).date()
+        success_dates.add(d)
+
+    # 3) 실제로 잘 지킨 날: 원래 인증해야 하는 날 중, success_dates에 포함된 날짜
+    total_slots = len(scheduled_dates)
+    done_slots = sum(1 for d in scheduled_dates if d in success_dates)
+
+    ratio = done_slots / total_slots if total_slots > 0 else 0.0
+
+    if ratio >= success_ratio and done_slots > 0:
+        habit.status = "completed_success"
+    else:
+        habit.status = "completed_fail"
+
+    habit.completed_at = now_utc
 
 @router.post("", response_model=HabitSearchItemOut)
 def create_habit(
@@ -237,3 +328,48 @@ def get_my_completed_habits(
         )
 
     return results
+
+@router.post("/evaluate", summary="기간이 끝난 내 습관들을 성공/실패로 정산")
+def evaluate_my_habits(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    - status = 'active' 이고
+    - period_end 가 지난 습관들에 대해
+      성공/실패를 판정해서 status와 completed_at을 갱신한다.
+    """
+    now_utc = datetime.now(timezone.utc)
+
+    # 아직 active 상태인 내 습관들만
+    habits = (
+        db.query(UserHabit)
+        .filter(
+            UserHabit.user_id == current_user.id,
+            UserHabit.status == "active",
+            UserHabit.period_end != None,
+        )
+        .all()
+    )
+
+    success_count = 0
+    fail_count = 0
+
+    for h in habits:
+        before = h.status
+        _evaluate_single_habit(db, h, now_utc)
+        after = h.status
+
+        if before != after:
+            if after == "completed_success":
+                success_count += 1
+            elif after == "completed_fail":
+                fail_count += 1
+
+    db.commit()
+
+    return {
+        "evaluated": len(habits),
+        "success_updated": success_count,
+        "fail_updated": fail_count,
+    }

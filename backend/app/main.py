@@ -8,14 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.routers import (
-    register,
-    auth,
+    register,auth,
     profile_setting,
-    home,
-    habits,
+    home,habits,
     user_interest,
-    potato,
-    exchange,)
+    potato,exchange,
+    certification,media)
 
 app = FastAPI(title="Hashbrown API", version="1.0.0")
 
@@ -41,6 +39,8 @@ app.include_router(habits.router)
 app.include_router(user_interest.router)
 app.include_router(potato.router)
 app.include_router(exchange.router)
+app.include_router(certification.router)
+app.include_router(media.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}

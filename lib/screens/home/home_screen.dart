@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 // 추가: 백엔드/로컬 저장 연동
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/farmer.dart';
-import '../../services/auth_service.dart';
-import '../../services/habit_service.dart';
-import '../../core/base_url.dart';
-import '../../services/home_service.dart';
 import '../../models/home_summary.dart';
 import '../../models/home_habit.dart' as dto;
+import '../../services/auth_service.dart';
+import '../../services/habit_service.dart';
+import '../../services/home_service.dart';
+import '../../services/certification_service.dart';
+import '../../core/base_url.dart';
 
 import 'habit_setting.dart';
 import 'cert_page.dart';
@@ -97,6 +98,7 @@ class HomeHabit {
   String method;
   HabitStatus status;
   HabitSetupData? source; // 설정에서 온 원본 (habit_setting.dart)
+  bool certifiedToday;
 
   HomeHabit({
     required this.userHabitId,
@@ -105,6 +107,7 @@ class HomeHabit {
     required this.method,
     this.status = HabitStatus.pending,
     this.source,
+    this.certifiedToday = false,
   });
 }
 
@@ -139,6 +142,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ====== 백엔드 연동 관련 필드 ======
   final _homeService = HomeService();
+  final _certService = CertificationService();
+
   HomeSummary? _summary;
   bool _isSummaryLoading = true;
   String? _summaryError;
@@ -269,7 +274,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // ===== 홈 요약 불러오기 (/home/summary) =====
   Future<void> _loadHomeSummary() async {
     try {
+      await HabitService().evaluateHabits();
+
       final data = await _homeService.fetchSummary();
+
+      final certifiedIds = await _certService.fetchTodayCertifiedHabitIds(); // Set<int>
+
       if (!mounted) return;
 
       setState(() {
@@ -279,22 +289,30 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // 서버 DTO(dto.HomeHabit)를 UI용 HomeHabit으로 변환
         _today = data.todayHabits
-            .map<HomeHabit>((dto.HomeHabit h) => HomeHabit(
-          userHabitId: h.userHabitId,
-          title: h.title,
-          time: h.time,
-          method: h.method,
-        ))
-            .toList();
+            .map<HomeHabit>((dto.HomeHabit h) {
+          final certified = certifiedIds.contains(h.userHabitId);
+          return HomeHabit(
+            userHabitId: h.userHabitId,
+            title: h.title,
+            time: h.time,
+            method: h.method,
+            status: certified ? HabitStatus.verified : HabitStatus.pending,
+            certifiedToday: certified,
+          );
+        }).toList();
 
         _fighting = data.fightingHabits
-            .map<HomeHabit>((dto.HomeHabit h) => HomeHabit(
-          userHabitId: h.userHabitId,
-          title: h.title,
-          time: h.time,
-          method: h.method,
-        ))
-            .toList();
+            .map<HomeHabit>((dto.HomeHabit h) {
+          final certified = certifiedIds.contains(h.userHabitId);
+          return HomeHabit(
+            userHabitId: h.userHabitId,
+            title: h.title,
+            time: h.time,
+            method: h.method,
+            status: certified ? HabitStatus.verified : HabitStatus.pending,
+            certifiedToday: certified,
+          );
+        }).toList();
       });
     } catch (e) {
       if (!mounted) return;
@@ -1181,6 +1199,10 @@ class _StatusPill extends StatelessWidget {
     const skipBg = Color(0xFFE0E0E0);
     const certBg = Color(0xFFF3BA37);
 
+    if (h.certifiedToday && h.status == HabitStatus.pending) {
+      h.status = HabitStatus.verified;
+    }
+
     final expired = _isExpired(h);
 
     late Color topBg;
@@ -1192,6 +1214,7 @@ class _StatusPill extends StatelessWidget {
         context,
         MaterialPageRoute(
           builder: (_) => CertPage(
+            userHabitId: h.userHabitId,
             habitTitle: h.title,
             method: h.method,
             deadline: h.source?.deadline,
@@ -1203,6 +1226,7 @@ class _StatusPill extends StatelessWidget {
 
       if (result == true) {
         h.status = HabitStatus.verified;
+        h.certifiedToday = true;
         onChange();
         onVerified();
       }

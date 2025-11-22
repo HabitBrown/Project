@@ -160,4 +160,25 @@ class HabitService {
       throw Exception('완료된 습관 불러오기 실패: ${res.statusCode}');
     }
   }
+
+  Future<void> evaluateHabits() async {
+    final token = await _getAccessToken();
+    if (token == null) throw Exception("로그인 필요");
+
+    final uri = Uri.parse('$kBaseUrl/habits/evaluate');
+
+    final resp = await _client.post(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (resp.statusCode != 200) {
+      throw Exception('습관 평가 실패: ${resp.statusCode} ${resp.body}');
+    }
+  }
+
+
+
 }

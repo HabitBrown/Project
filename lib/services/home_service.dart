@@ -37,4 +37,5 @@ class HomeService {
       throw Exception('홈 요약 불러오기 실패: ${res.statusCode}');
     }
   }
+
 }
