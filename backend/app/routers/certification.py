@@ -1,5 +1,5 @@
 # app/routers/certifications.py
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -13,6 +13,88 @@ from app.routers.register import get_current_user
 
 router = APIRouter(prefix="/certifications", tags=["Certifications"])
 
+KST = timezone(timedelta(hours=9))
+
+def auto_fail_overdue_habits_for_today(
+    db: Session,
+    user: User,
+) -> list[Certification]:
+    """
+    - 오늘 요일에 해당되는 UserHabit 중에서
+    - 현재(KST)가 deadline_local 을 지난 경우
+    - 그리고 오늘 아직 Certification 이 없는 습관에 대해
+      status='fail' 인 Certification 을 생성한다.
+    """
+
+    now_kst = datetime.now(KST)
+    today: date = now_kst.date()
+    weekday = now_kst.isoweekday()  # 1=월 ... 7=일
+
+    created: list[Certification] = []
+
+    # 1) 오늘 이미 cert 있는 습관들 (success/fail 상관없이) 서브쿼리
+    existing_subq = (
+        db.query(Certification.user_habit_id)
+        .filter(
+            Certification.user_id == user.id,
+            Certification.cert_date == today,
+        )
+        .subquery()
+    )
+
+    # 2) 오늘 요일에 해당되는, 내 active 습관들만 조회
+    # days_of_week 는 SmallInteger 비트마스크 (1<<weekday) 사용 :contentReference[oaicite:1]{index=1}
+    habits = (
+        db.query(UserHabit)
+        .filter(
+            UserHabit.user_id == user.id,
+            UserHabit.is_active == True,
+            (UserHabit.days_of_week.op("&")(1 << weekday) != 0),
+            ~UserHabit.id.in_(existing_subq),
+        )
+        .all()
+    )
+
+    if not habits:
+        return []
+
+    now_utc = datetime.now(timezone.utc)
+
+    for h in habits:
+        # deadline_local: time 컬럼 :contentReference[oaicite:2]{index=2}
+        if h.deadline_local is None:
+            continue
+
+        # 오늘 날짜 + deadline_local → 오늘 마감 시각 (KST)
+        deadline_kst = datetime.combine(today, h.deadline_local, tzinfo=KST)
+
+        # 아직 마감 안 지났으면 fail 생성 X
+        if now_kst <= deadline_kst:
+            continue
+
+        # 마감 지났고, 아직 오늘 cert 없는 습관 → fail 생성
+        cert = Certification(
+            user_id=user.id,
+            user_habit_id=h.id,
+            duel_id=h.duel_id,
+            ts_utc=now_utc,
+            method=h.method,          # 습관의 인증 방식 재사용 
+            text_content=None,
+            photo_asset_id=None,
+            status="fail",
+            fail_reason="deadline passed",
+            cert_date=today,
+        )
+        db.add(cert)
+        created.append(cert)
+
+    db.commit()
+
+    # 필요하면 refresh
+    for c in created:
+        db.refresh(c)
+
+    return created
 
 def get_db():
     db = SessionLocal()
@@ -20,7 +102,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 
 @router.post("", response_model=CertificationOut, status_code=status.HTTP_201_CREATED)
 def create_certification(
@@ -71,6 +152,9 @@ def create_certification(
 
     # 4) Certification 생성
     now_utc = datetime.now(timezone.utc)
+    now_kst = now_utc.astimezone(KST)
+    today: date = now_kst.date()
+    
     cert = Certification(
         user_id=current_user.id,
         user_habit_id=user_habit.id,
@@ -81,6 +165,7 @@ def create_certification(
         photo_asset_id=body.photo_asset_id,
         status="success",  # 일단 성공으로만 저장 (나중에 실패도 추가 가능)
         fail_reason=None,
+        cert_date=today,
     )
 
     db.add(cert)

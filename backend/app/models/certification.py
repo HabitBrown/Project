@@ -1,15 +1,15 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from sqlalchemy import (
-    BigInteger, String, Text, DateTime, ForeignKey, Enum, UniqueConstraint
+    BigInteger, String, Text, DateTime, ForeignKey, Enum, UniqueConstraint,Date
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
 class Certification(Base):
     __tablename__ = "certifications"
-    __table_args__ = (UniqueConstraint("user_id", "user_habit_id", name="uq_cert_user_habit_day"),)
+    __table_args__ = (UniqueConstraint("user_id", "user_habit_id", "cert_date", name="uq_cert_user_habit_day"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -21,3 +21,4 @@ class Certification(Base):
     photo_asset_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("media_assets.id", ondelete="SET NULL"))
     status: Mapped[str] = mapped_column(Enum("success", "fail", name="cert_status_enum"), nullable=False)
     fail_reason: Mapped[Optional[str]] = mapped_column(String(100))
+    cert_date: Mapped[date] = mapped_column(Date, nullable=False)
