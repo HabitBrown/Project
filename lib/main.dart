@@ -11,7 +11,7 @@ import 'screens/home/potato_screen.dart';
 import 'screens/home/hash_screen.dart';
 import 'screens/home/habit_setting.dart';
 import 'screens/home/mypage_screen.dart';
-import 'screens/home/fight_setting.dart';   // ⭐ 여기 추가!
+import 'screens/home/fight_setting.dart';
 
 void main() => runApp(const HabitBrownApp());
 

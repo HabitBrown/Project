@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'fight_setting.dart'; // ✅ 내기 설정 화면
 import 'home_screen.dart' show AppImages, AppColors;
+import 'hash_fight.dart';
 
 /// =======================
 /// 이미지 경로
@@ -879,11 +880,16 @@ class _RivalSection extends StatelessWidget {
                   : Column(
                 children: [
                   for (int i = 0; i < rivals.length; i++) ...[
-                    _RivalCard(
-                      name: rivals[i].name,
-                      days: rivals[i].days,
-                      habit: rivals[i].habit,
-                      showRightButton: rivals[i].showRightButton,
+                    Center(
+                      child: SizedBox(
+                        width: 346, // ✅ 카드 폭 고정 (필요하면 320~340 사이에서 조절)
+                        child: _RivalCard(
+                          name: rivals[i].name,
+                          days: rivals[i].days,
+                          habit: rivals[i].habit,
+                          showRightButton: rivals[i].showRightButton,
+                        ),
+                      ),
                     ),
                     if (i != rivals.length - 1)
                       const SizedBox(height: 16),
@@ -941,7 +947,7 @@ class _RivalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const double cardHeight = 96;
-    const double buttonRatio = 0.26;
+    const double buttonRatio = 0.25; // 주황칸 비율
 
     return SizedBox(
       height: cardHeight,
@@ -953,6 +959,7 @@ class _RivalCard extends StatelessWidget {
           return Stack(
             clipBehavior: Clip.none,
             children: [
+              // 배경 이미지
               Positioned.fill(
                 left: 10,
                 child: ClipRRect(
@@ -964,10 +971,13 @@ class _RivalCard extends StatelessWidget {
                   ),
                 ),
               ),
+
+              // 내용 + 오른쪽 버튼
               Positioned.fill(
                 left: 10,
                 child: Row(
                   children: [
+                    // 왼쪽 내용 영역
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(67, 29, 18, 10),
@@ -977,24 +987,21 @@ class _RivalCard extends StatelessWidget {
                           children: [
                             Row(
                               children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 4),
-                                  child: Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14.5,
-                                    ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14.5,
                                   ),
                                 ),
                                 const Spacer(),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 30),
-                                  child: Text(
-                                    '$days일 째',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$days일 째',
+                                  style: const TextStyle(fontSize: 12),
                                 ),
+                                const SizedBox(width: 26),
                               ],
                             ),
                             SizedBox(
@@ -1023,38 +1030,65 @@ class _RivalCard extends StatelessWidget {
                         ),
                       ),
                     ),
+
+                    // 오른쪽: 주황칸 텍스트 영역
                     if (showRightButton)
                       SizedBox(
-                          width: buttonWidth,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Transform.translate(
-                              offset: const Offset(0, 6),
-                              child: Padding(
-                                padding: const EdgeInsets.only(
-                                  right: 24,
-                                  bottom: 0,
+                        width: buttonWidth,
+                        child: Center(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const HashFightPage(),
                                 ),
-                                child: const Text(
-                                  '라이벌\n보러가기',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w400,
-                                    fontSize: 11,
-                                    height: 1.3,
-                                  ),
+                              );
+                            },
+                            child: Transform.translate(
+                              offset: const Offset(-6, 4), // 살짝 왼쪽·아래로
+                              child: Padding(
+                                padding:
+                                const EdgeInsets.symmetric(vertical: 4),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: const [
+                                    Text(
+                                      '라이벌',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w400,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      '보러가기',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w400,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          )
+                          ),
+                        ),
                       )
                     else
                       SizedBox(width: buttonWidth),
-
                   ],
                 ),
               ),
+
+              // 왼쪽 프로필 동그라미
               Positioned(
                 left: 16,
                 top: 6,

@@ -20,18 +20,46 @@ ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 UPLOAD_ROOT = Path(os.getenv("HASHBROWN_UPLOAD_ROOT", "uploads")).resolve()
 
 async def _save_image(file: UploadFile, subdir: str = "profile") -> str:
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="지원하지 않는 이미지 형식입니다.")
+    """
+    - 우선 content_type 으로 체크
+    - 모바일/웹에서 application/octet-stream 으로 오는 경우에는
+      filename 확장자로 다시 한 번 이미지 타입을 추론해서 허용
+    """
+    content_type = file.content_type or ""
 
-    target_dir = (UPLOAD_ROOT / subdir)
-    target_dir.mkdir(parents=True, exist_ok=True)
+    # 1차: content_type 으로 체크
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        # 2차: filename 확장자로 추론 (jpg/png/webp 등)
+        ext = Path(file.filename or "").suffix.lower()
 
-    ext = {
+        ext_to_type = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }
+        guessed_type = ext_to_type.get(ext)
+
+        if not guessed_type:
+          # 그래도 못 맞추면 진짜로 에러
+          raise HTTPException(
+              status_code=400,
+              detail="지원하지 않는 이미지 형식입니다.",
+          )
+
+        content_type = guessed_type
+
+    # 여기까지 오면 content_type 은 png/jpeg/webp 중 하나
+    type_to_ext = {
         "image/png": "png",
         "image/jpeg": "jpg",
         "image/jpg": "jpg",
         "image/webp": "webp",
-    }[file.content_type]
+    }
+    ext = type_to_ext[content_type]
+
+    target_dir = (UPLOAD_ROOT / subdir)
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     fname = f"{uuid.uuid4().hex}.{ext}"
     fpath = target_dir / fname
@@ -43,6 +71,7 @@ async def _save_image(file: UploadFile, subdir: str = "profile") -> str:
                 break
             out.write(chunk)
 
+    # DB 에는 상대 경로만 저장
     return f"/uploads/{subdir}/{fname}"
 
 
@@ -72,11 +101,11 @@ def update_profile(user_id: int, payload: ProfileUpdateIn, db: Session = Depends
     if payload.gender is not None:
         user.gender = payload.gender
         
-        if payload.interests is not None:
+    if payload.interests is not None:
         # 기존 관심사 전부 삭제
-            db.execute(
-                delete(UserInterest).where(UserInterest.user_id == user_id)
-            )
+        db.execute(
+            delete(UserInterest).where(UserInterest.user_id == user_id)
+        )
         # 새 관심사 리스트로 다시 insert
         for interest_id in payload.interests:
             db.add(UserInterest(user_id=user_id, interest_id=interest_id))
@@ -84,7 +113,7 @@ def update_profile(user_id: int, payload: ProfileUpdateIn, db: Session = Depends
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return _build_profile_out(db, user)
 
 
 @router.post("/{user_id}/profile-picture", response_model=ProfileOut, status_code=status.HTTP_201_CREATED)
@@ -100,7 +129,7 @@ async def upload_profile_picture(
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return _build_profile_out(db, user)
 
 
 def _build_profile_out(db: Session, user: User) -> ProfileOut:
@@ -116,5 +145,6 @@ def _build_profile_out(db: Session, user: User) -> ProfileOut:
         age=user.age,
         gender=user.gender,
         profile_picture=user.profile_picture,
+        hb_balance=user.hb_balance,
         interests=list(interest_ids),  # ✅ 스키마에 맞게 리스트로 변환
     )

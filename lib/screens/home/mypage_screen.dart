@@ -43,6 +43,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   late String _gen;
   late String _about;
   late List<String> _myInterests;
+  late List<int> _myInterestIds;
   late List<String> _mySuccessHabits;
   String? _avatarPath;
   String? _avatarUrl;   // 서버에서 받은 프로필 이미지 URL
@@ -59,12 +60,12 @@ class _MyPageScreenState extends State<MyPageScreen> {
     _gen = widget.gender ?? 'N';
     _about = widget.intro ?? '';
     _myInterests = widget.interests ?? [];
+    _myInterestIds = [];
     _mySuccessHabits = widget.successHabits ?? [];
     _avatarPath = widget.avatarPath;
 
     // 백엔드에서 유저 정보 동기화
     _loadUserProfile();
-
     _loadCompletedHabits();
     _loadUserInterests();
   }
@@ -138,12 +139,15 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
   Future<void> _loadUserInterests() async {
        try {
-         final names = await _userService.fetchMyInterestNames();
+         // 1) id + name 이 들어있는 전체 응답 받기
+         final resp = await _userService.fetchMyInterests();
          if (!mounted) return;
 
+         // 2) 이름 리스트 + ID 리스트 모두 세팅
          setState(() {
            // 백엔드에서 조회한 관심사 이름 리스트로 교체
-           _myInterests = names;
+           _myInterests   = resp.interests.map((e) => e.name).toList();
+           _myInterestIds = resp.interests.map((e) => e.id).toList();
          });
        } catch (e) {
          // 실패해도 마이페이지 전체가 죽지 않도록 조용히 무시
@@ -310,18 +314,61 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
     if (result == null) return;
 
+    final newNick        = result['nickname']     as String? ?? _nick;
+    final newGen         = result['gender']       as String? ?? _gen;
+    final newIntro       = result['intro']        as String? ?? _about;
+    final newInterests   = (result['interests']   as List<dynamic>?)?.cast<String>() ?? _myInterests;
+    final newInterestIds = (result['interestIds'] as List<dynamic>?)?.map((e) => e as int).toList()
+        ?? _myInterestIds;   //
+    final newAvatarPath  = result['avatarPath']   as String? ?? _avatarPath;
+
     setState(() {
-      _nick = result['nickname'] as String? ?? _nick;
-      _gen = result['gender'] as String? ?? _gen;
-      _about = result['intro'] as String? ?? _about;
-      _myInterests =
-          (result['interests'] as List<dynamic>?)?.cast<String>() ??
-              _myInterests;
-      _mySuccessHabits =
-          (result['successHabits'] as List<dynamic>?)?.cast<String>() ??
-              _mySuccessHabits;
-      _avatarPath = result['avatarPath'] as String? ?? _avatarPath;
+      _nick          = newNick;
+      _gen           = newGen;
+      _about         = newIntro;
+      _myInterests   = newInterests;
+      _myInterestIds = newInterestIds;
+      _avatarPath    = newAvatarPath;
     });
+
+    // 2) 백엔드에 반영
+    try {
+      await _userService.updateMyProfile(
+        nickname: newNick,
+        bio: newIntro,
+        gender: newGen,
+        interestIds: newInterestIds.isEmpty ? null : newInterestIds,
+      );
+
+      // 3) 서버에 이미지 업로드 (새로 선택된 경우)
+      if (newAvatarPath != null && newAvatarPath.isNotEmpty) {
+        final file = File(newAvatarPath);
+        if (await file.exists()) {
+          final relPath = await _userService.uploadProfileImage(file);
+          // "/uploads/..." 같은 상대 경로 들어옴 → kBaseUrl 붙여서 최종 URL 만들기
+          final fullUrl = relPath.startsWith('http')
+              ? relPath
+              : '$kBaseUrl$relPath';
+
+          if (mounted) {
+            setState(() {
+              _avatarUrl = fullUrl;
+            });
+          }
+        }
+      }
+
+      // 필요하면 서버 기준으로 다시 한 번 동기화
+      await _loadUserProfile();
+      await _loadUserInterests();
+    } catch (e) {
+      // 실패했을 때 사용자에게만 알려주고, 필요하면 setState로 롤백도 가능
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('프로필 수정에 실패했어요. 잠시 후 다시 시도해 주세요.')),
+      );
+    }
+
   }
 
   @override

@@ -132,8 +132,15 @@ class AuthService {
     required XFile imageFile,
   }) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
       final uri = Uri.parse('$kBaseUrl/users/$userId/profile-picture');
       final req = http.MultipartRequest('POST', uri);
+
+      if (token != null && token.isNotEmpty) {
+        req.headers['Authorization'] = 'Bearer $token';
+      }
 
       if (kIsWeb) {
         final bytes = await imageFile.readAsBytes();
@@ -154,13 +161,34 @@ class AuthService {
           contentType: mediaType,
         ));
       } else {
+        final path = imageFile.path;
+        final filename = path.split('/').last;
+        final ext = filename.split('.').last.toLowerCase();
+
+        MediaType mediaType;
+        if (ext == 'png') {
+          mediaType = MediaType('image', 'png');
+        } else if (ext == 'webp') {
+          mediaType = MediaType('image', 'webp');
+        } else if (ext == 'gif') {
+          mediaType = MediaType('image', 'gif');
+        } else {
+          mediaType = MediaType('image', 'jpeg');
+        }
         req.files.add(
-            await http.MultipartFile.fromPath('file', imageFile.path));
+            await http.MultipartFile.fromPath(
+                'file',
+                path,
+                filename: filename,
+                contentType: mediaType,
+            ),
+        );
       }
 
       final resp = await req.send();
-      if (resp.statusCode == 201) {
-        final body = await resp.stream.bytesToString();
+      final body = await resp.stream.bytesToString();
+
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
         final data = jsonDecode(body) as Map<String, dynamic>;
         return data['profile_picture'] as String?;
       } else {

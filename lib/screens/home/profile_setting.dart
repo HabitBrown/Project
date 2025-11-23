@@ -147,12 +147,34 @@ class _ProfileSettingPageState extends State<ProfileSettingPage> {
       return;
     }
 
+    final selectedNames = List<String>.from(_selectedInterests);
+
+    final Map<String, int> _interestNameToId = {
+      '운동': 1,
+      '음식': 2,
+      '시험': 3,
+      '영화': 4,
+      '공부': 5,
+      '사진': 6,
+      '음악': 7,
+      '춤': 8,
+    };
+
+    final selectedIds = <int>[];
+    for (final name in selectedNames) {
+      final id = _interestNameToId[name];
+      if (id != null) {
+        selectedIds.add(id);
+      }
+    }
+
     final profile = {
       'nickname': _nicknameCtrl.text.trim(),
       'gender': _selectedGender,
       'age': _ageCtrl.text.trim(),
       'intro': _introCtrl.text.trim(),
-      'interests': List<String>.from(_selectedInterests),
+      'interests': selectedNames,
+      'interestIds': selectedIds,
       'avatarPath': _profileImageFile?.path,
     };
 

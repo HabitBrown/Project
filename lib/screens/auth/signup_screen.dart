@@ -122,7 +122,7 @@ class _SignupPageState extends State<SignupPage> {
       Navigator.pushReplacementNamed(
         context,
         '/profileSetup',
-        arguments: {'userId': userId, 'name': name},
+        arguments: {'userId': userId, 'nickname': name},
       );
     } catch (e) {
       if (!mounted) return;
