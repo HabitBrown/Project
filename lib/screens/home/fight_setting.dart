@@ -4,28 +4,38 @@ import 'package:flutter/material.dart';
 import '../../models/farmer.dart';
 import 'home_screen.dart';
 import 'habit_setting.dart' show HabitSetupData, CertType, HabitSetupLogoPath;
+import '../../services/exchange_service.dart';
+import '../../services/duel_service.dart';
 
 /// 교환하기를 눌렀을 때 뜨는 "내기 설정" 페이지
 /// pop 할 때 HabitSetupData 를 돌려줌.
 class FightSettingPage extends StatefulWidget {
+
   const FightSettingPage({
     super.key,
     required this.targetTitle,       // 상대 감자의 습관 제목 (예: "아침 6시 기상")
     this.initialDifficulty = 1,      // 원래 난이도(1~5)
     this.initialCertType = CertType.photo,
-    this.initialDeadline,            // "21:30" 같은 문자열
+    this.initialDeadline,
+    this.exchangeRequestId,
+    this.opponentUserHabitId,// "21:30" 같은 문자열
   });
 
   final String targetTitle;
   final int initialDifficulty;
   final CertType initialCertType;
   final String? initialDeadline;
+  final int? exchangeRequestId;
+  final int? opponentUserHabitId;
 
   @override
   State<FightSettingPage> createState() => _FightSettingPageState();
 }
 
 class _FightSettingPageState extends State<FightSettingPage> {
+
+  final _duelService = DuelService();
+  final _exchangeService = ExchangeService();
   // 요일 선택
   final List<bool> _weekdaySelected = List<bool>.filled(7, false);
   static const _labels = ['월', '화', '수', '목', '금', '토', '일'];
@@ -111,7 +121,7 @@ class _FightSettingPageState extends State<FightSettingPage> {
     setState(() => _weekdaySelected[i] = !_weekdaySelected[i]);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     // 요일 검증
     final days = <int>[];
     for (int i = 0; i < 7; i++) {
@@ -156,7 +166,33 @@ class _FightSettingPageState extends State<FightSettingPage> {
       deadline: deadline24,
     );
 
-    Navigator.of(context).pop(result);
+    try {
+      if (widget.exchangeRequestId != null &&
+          widget.opponentUserHabitId != null) {
+
+        // 🎯 duel 생성 API 호출 (accept + duel 생성)
+        final ok = await DuelService().createDuelFromExchange(
+          exchangeRequestId: widget.exchangeRequestId!,
+          opponentUserHabitId: widget.opponentUserHabitId!,
+          setup: result,
+        );
+
+        if (!mounted) return;
+
+        if (ok) {
+          Navigator.of(context).pop(true);  // HashScreen이 re-load 하게 됨
+        } else {
+          _showSnack('듀얼 생성 실패');
+        }
+
+        return;
+      }
+
+      // 기본 모드
+      Navigator.of(context).pop(result);
+    } catch (e) {
+      _showSnack('요청 실패: $e');
+    }
   }
 
   @override

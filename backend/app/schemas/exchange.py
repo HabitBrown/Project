@@ -36,3 +36,21 @@ class ExchangeRequestOut(BaseModel):
 
     class Config:
         from_attributes = True   # SQLAlchemy 모델 → 응답 변환용
+
+class ReceivedFromUser(BaseModel):
+    id: int
+    nickname: str
+    profile_picture: Optional[str] = None
+
+class ReceivedTargetHabit(BaseModel):
+    habit_id: int
+    title: str
+    difficulty: int
+
+class ReceivedExchangeItem(BaseModel):
+    request_id: int
+    from_user: ReceivedFromUser
+    target_habit: ReceivedTargetHabit
+    
+class ExchangeAcceptIn(BaseModel):
+    opponent_user_habit_id: int

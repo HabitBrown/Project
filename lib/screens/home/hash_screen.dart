@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
-import 'fight_setting.dart'; // ✅ 내기 설정 화면
+import 'fight_setting.dart';
 import 'home_screen.dart' show AppImages, AppColors;
 import 'hash_fight.dart';
+import '../../services/exchange_service.dart';
+import '../../services/duel_service.dart';
+import '../../core/base_url.dart';
+
 
 /// =======================
 /// 이미지 경로
@@ -28,27 +32,93 @@ const Color kChallengeChip = Color(0xFFFDF3D9);
 /// =======================
 
 class ChallengeInfo {
-  final String farmerName;
-  final String title;
+  final int requestId;      // 교환 요청 id
+  final int fromUserId;     // 도전장 보낸 사람 id
+  final String farmerName;  // 도전장 보낸 농부 닉네임
+  final int targetHabitId;  // 내가 가진 원본 Habit id
+  final String title;       // 내가 가진 습관 제목 (하루에 한잔 물 마시기)
+  final String? avatarUrl;
 
   const ChallengeInfo({
+    required this.requestId,
+    required this.fromUserId,
     required this.farmerName,
+    required this.targetHabitId,
     required this.title,
+    this.avatarUrl,
   });
+
+  factory ChallengeInfo.fromJson(Map<String, dynamic> json) {
+    final from = json['from_user'] as Map<String, dynamic>;
+    final target = json['target_habit'] as Map<String, dynamic>;
+    final rawProfile = from['profile_picture'] as String?;
+
+    String? avatarUrl;
+    if (rawProfile != null && rawProfile.isNotEmpty) {
+      if (rawProfile.startsWith('http')) {
+        avatarUrl = rawProfile;
+      } else {
+        avatarUrl = '$kBaseUrl$rawProfile'; // ex) /uploads/profile/xxx.webp
+      }
+    }
+
+    return ChallengeInfo(
+      requestId: json['request_id'] as int,
+      fromUserId: from['id'] as int,
+      farmerName: from['nickname'] as String,
+      targetHabitId: target['habit_id'] as int,
+      title: target['title'] as String,
+      avatarUrl: avatarUrl,
+    );
+  }
 }
 
 class RivalInfo {
+  final int duelId;
+  final int rivalId;
   final String name;
   final int days;     // 예: 30
-  final String habit; // 예: '코딩 테스트 하기'
+
   final bool showRightButton;
 
+  final String myHabitTitle;
+  final String rivalHabitTitle;
+  final String? avatarUrl;
+
   const RivalInfo({
+    required this.duelId,
+    required this.rivalId,
     required this.name,
     required this.days,
-    required this.habit,
+    required this.myHabitTitle,
+    required this.rivalHabitTitle,
+    this.avatarUrl,
     this.showRightButton = true,
   });
+
+  factory RivalInfo.fromJson(Map<String, dynamic> json) {
+
+    final rawProfile = json['rival_profile_picture'] as String?;
+
+    String? resolvedAvatar;
+    if (rawProfile != null && rawProfile.isNotEmpty) {
+      // 절대 URL 아니면 서버 도메인 붙여주기
+      if (rawProfile.startsWith('http')) {
+        resolvedAvatar = rawProfile;
+      } else {
+        resolvedAvatar = '$kBaseUrl$rawProfile';
+      }
+    }
+    return RivalInfo(
+      duelId: json['duel_id'] as int,
+      rivalId: json['rival_id'] as int,
+      name: json['rival_nickname'] as String,
+      days: json['days'] as int,
+      myHabitTitle: json['my_habit_title'] as String,
+      rivalHabitTitle: json['rival_habit_title'] as String,
+      avatarUrl: resolvedAvatar,
+    );
+  }
 }
 
 /// =======================
@@ -74,28 +144,34 @@ class _HashScreenState extends State<HashScreen> {
   /// 도전장 목록 (거절하면 여기서 제거)
   late List<ChallengeInfo> _challenges;
 
-  final List<RivalInfo> _rivals = const [
-    RivalInfo(name: '송강호', days: 30, habit: '코딩 테스트 하기'),
-    RivalInfo(name: '유민재', days: 25, habit: '야채 먹기'),
-    RivalInfo(name: '이연제', days: 18, habit: '러닝 3km'),
-    RivalInfo(name: '러너핑', days: 8, habit: '러닝 3km'),
-  ];
+  final _exchangeService = ExchangeService();
+  final _duelService = DuelService();
+
+  List<RivalInfo> _rivals = [];
 
   @override
   void initState() {
     super.initState();
     _currentHb = widget.hbCount;
 
-    _challenges = [
-      const ChallengeInfo(
-        farmerName: '이연제',
-        title: '하루에 한잔 물 마시기',
-      ),
-      const ChallengeInfo(
-        farmerName: '유민재',
-        title: '나의 습관 1개',
-      ),
-    ];
+    _challenges = [];
+    _loadChallenges();
+
+    _loadRivals();
+  }
+
+  Future<void> _loadChallenges() async {
+    try {
+      final raw = await _exchangeService.fetchReceivedRequests();
+      setState(() {
+        _challenges = raw
+            .map((e) => ChallengeInfo.fromJson(e))
+            .toList();
+      });
+    } catch (e) {
+      // TODO: 에러 UI (스낵바나 로그 정도)
+      debugPrint('도전장 로드 실패: $e');
+    }
   }
 
   /// 확인해보기 눌렀을 때 아래 패널 띄우기
@@ -109,12 +185,12 @@ class _HashScreenState extends State<HashScreen> {
       builder: (ctx) {
         return _ChallengeDetailSheet(
           info: info,
-          // ✅ 수락: 선택한 습관 데이터를 받아서 내기 설정 화면으로 이동
+          fromUserId: info.fromUserId,
           onAccept: (selectedHash) async {
             // 1) 바텀시트 닫기
             Navigator.of(ctx).pop();
 
-            // ✅ 2) 수락했으니 도전장 목록에서 제거
+            // 2) 수락했으니 도전장 목록에서 제거
             setState(() {
               if (idx >= 0 && idx < _challenges.length) {
                 _challenges.removeAt(idx);
@@ -127,19 +203,53 @@ class _HashScreenState extends State<HashScreen> {
             final int difficulty =
                 (selectedHash['difficulty'] as int?) ?? 1;
 
-            await Navigator.push(
+            // 🔧 user_habit_id / id 둘 다 시도 + 없으면 에러 처리
+            final dynamic rawId =
+                selectedHash['user_habit_id'] ?? selectedHash['id'];
+
+            if (rawId == null) {
+              debugPrint('❌ opponent user habit id 없음: $selectedHash');
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('상대 습관 정보를 불러올 수 없습니다.')),
+                );
+              }
+              // 리스트는 다시 리로드해서 원상복구
+              await _loadChallenges();
+              return;
+            }
+
+            final int opponentUserHabitId = rawId as int;
+
+            final bool? created = await Navigator.push<bool>(
               context,
               MaterialPageRoute(
                 builder: (_) => FightSettingPage(
                   targetTitle: habitTitle,
                   initialDifficulty: difficulty,
+                  exchangeRequestId: info.requestId,
+                  opponentUserHabitId: opponentUserHabitId,
                 ),
               ),
             );
+
+            if (created == true) {
+              _loadRivals();
+              await _loadChallenges();
+            } else {
+              await _loadChallenges();
+            }
           },
-          onReject: () {
+          onReject: () async {
             // ‘거절’ 버튼을 직접 눌렀을 때만 도전장 삭제
             Navigator.of(ctx).pop();
+
+            try {
+              await _exchangeService.rejectExchangeRequest(info.requestId);
+            } catch (e) {
+              debugPrint('교환 거절 실패: $e');
+            }
+
             setState(() {
               if (idx >= 0 && idx < _challenges.length) {
                 _challenges.removeAt(idx);
@@ -149,6 +259,17 @@ class _HashScreenState extends State<HashScreen> {
         );
       },
     );
+  }
+
+  Future<void> _loadRivals() async {
+    try {
+      final items = await _duelService.fetchActiveDuels();
+      setState(() {
+        _rivals = items;
+      });
+    } catch (e) {
+      debugPrint('듀얼 목록 로드 실패: $e');
+    }
   }
 
   @override
@@ -387,6 +508,7 @@ class _ChallengeList extends StatelessWidget {
           _ChallengeRow(
             farmerName: items[i].farmerName,
             title: items[i].title,
+            avatarUrl: items[i].avatarUrl,
             onCheck: () => onCheck?.call(items[i]),
           ),
           if (i != items.length - 1) const SizedBox(height: 16),
@@ -399,11 +521,13 @@ class _ChallengeList extends StatelessWidget {
 class _ChallengeRow extends StatelessWidget {
   final String farmerName;
   final String title;
+  final String? avatarUrl;
   final VoidCallback? onCheck;
 
   const _ChallengeRow({
     required this.farmerName,
     required this.title,
+    this.avatarUrl,
     this.onCheck,
   });
 
@@ -430,14 +554,7 @@ class _ChallengeRow extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFFD9D9D9),
-                  ),
-                ),
+                _ProfileCircle(avatarUrl: avatarUrl),
                 const SizedBox(width: 10),
                 SizedBox(
                   width: contentWidth,
@@ -451,6 +568,7 @@ class _ChallengeRow extends StatelessWidget {
                           color: Colors.black87,
                         ),
                       ),
+
                       const SizedBox(height: 6),
                       SizedBox(
                         width: chipWidth,
@@ -517,17 +635,58 @@ class _ChallengeRow extends StatelessWidget {
   }
 }
 
+class _ProfileCircle extends StatelessWidget {
+  final String? avatarUrl;
+  const _ProfileCircle({this.avatarUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    if (avatarUrl == null || avatarUrl!.isEmpty) {
+      return Container(
+        width: 38,
+        height: 38,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFFD9D9D9),
+        ),
+      );
+    }
+
+    return ClipOval(
+      child: Image.network(
+        avatarUrl!,
+        width: 38,
+        height: 38,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) {
+          // 로딩 실패 시 회색 동그라미
+          return Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFD9D9D9),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 /// =======================
 /// 확인해보기 바텀시트
 /// =======================
 
 class _ChallengeDetailSheet extends StatefulWidget {
   final ChallengeInfo info;
+  final int fromUserId;
   final void Function(Map<String, dynamic> selectedHash) onAccept; // ✅ 선택된 습관 전달
   final VoidCallback onReject;
 
   const _ChallengeDetailSheet({
     required this.info,
+    required this.fromUserId,
     required this.onAccept,
     required this.onReject,
   });
@@ -538,27 +697,39 @@ class _ChallengeDetailSheet extends StatefulWidget {
 
 class _ChallengeDetailSheetState extends State<_ChallengeDetailSheet> {
   int? _selectedIndex; // 하나만 선택
-
   bool get _canAccept => _selectedIndex != null;
+
+  final _exchangeService = ExchangeService();
+
+  List<Map<String, dynamic>> _hashes = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHashes();
+  }
+
+  Future<void> _loadHashes() async {
+    try {
+      final raw = await _exchangeService.fetchCompletedHashes(widget.fromUserId);
+      // raw: [{ "hash_id": 7, "title": "...", "difficulty": 3 }, ...]
+      setState(() {
+        _hashes = raw;
+        _loading = false;
+      });
+      debugPrint('완료 습관 응답: $_hashes');
+    } catch (e) {
+      debugPrint('상대 완료 습관 로드 실패: $e');
+      setState(() {
+        _hashes = [];
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // 예시용 데이터 (나중에 B 농부의 해시 목록으로 교체)
-    final List<Map<String, dynamic>> dummyHashes = [
-      {
-        'title': '말해보기 하기',
-        'difficulty': 3,
-      },
-      {
-        'title': '${widget.info.farmerName}가 가진 습관 2',
-        'difficulty': 4,
-      },
-      {
-        'title': '${widget.info.farmerName}가 가진 습관 3',
-        'difficulty': 5,
-      },
-    ];
-
     return GestureDetector(
       // 바깥(어두운 부분)을 탭하면 닫기
       behavior: HitTestBehavior.opaque,
@@ -631,19 +802,47 @@ class _ChallengeDetailSheetState extends State<_ChallengeDetailSheet> {
                           ),
                         ),
                         const SizedBox(height: 6),
+
+                        // ▼ 여기부터 리스트 부분 교체
                         Container(
                           decoration: BoxDecoration(
                             color: const Color(0xFFF3E2A5),
                             borderRadius: BorderRadius.circular(24),
                           ),
-                          padding: const EdgeInsets.fromLTRB(16, 12, 10, 12),
-                          child: Column(
+                          padding:
+                          const EdgeInsets.fromLTRB(16, 12, 10, 12),
+                          child: _loading
+                              ? const SizedBox(
+                            height: 60,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          )
+                              : (_hashes.isEmpty
+                              ? const SizedBox(
+                            height: 60,
+                            child: Center(
+                              child: Text(
+                                '완료한 습관이 없습니다.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ),
+                          )
+                              : Column(
                             children: [
-                              for (int i = 0; i < dummyHashes.length; i++) ...[
+                              for (int i = 0;
+                              i < _hashes.length;
+                              i++) ...[
                                 _ChallengeDetailRow(
-                                  title: dummyHashes[i]['title'] as String,
-                                  difficulty:
-                                  dummyHashes[i]['difficulty'] as int,
+                                  title:
+                                  _hashes[i]['title'] as String,
+                                  difficulty: _hashes[i]
+                                  ['difficulty'] as int,
                                   selected: _selectedIndex == i,
                                   onSelect: () {
                                     setState(() {
@@ -651,13 +850,14 @@ class _ChallengeDetailSheetState extends State<_ChallengeDetailSheet> {
                                     });
                                   },
                                 ),
-                                if (i != dummyHashes.length - 1)
+                                if (i != _hashes.length - 1)
                                   const SizedBox(height: 6),
                               ],
                             ],
-                          ),
+                          )),
                         ),
                         const SizedBox(height: 10),
+
                         Row(
                           children: [
                             Expanded(
@@ -677,7 +877,8 @@ class _ChallengeDetailSheetState extends State<_ChallengeDetailSheet> {
                                   onPressed: _canAccept
                                       ? () {
                                     final selected =
-                                    dummyHashes[_selectedIndex!];
+                                    _hashes[_selectedIndex!];
+                                    // { "hash_id": ..., "title": ..., "difficulty": ... }
                                     widget.onAccept(selected);
                                   }
                                       : null,
@@ -697,8 +898,7 @@ class _ChallengeDetailSheetState extends State<_ChallengeDetailSheet> {
                                 height: 34,
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                    const Color(0xFFE4D6A7),
+                                    backgroundColor: const Color(0xFFE4D6A7),
                                     foregroundColor: Colors.black87,
                                     elevation: 0,
                                     shape: RoundedRectangleBorder(
@@ -729,6 +929,7 @@ class _ChallengeDetailSheetState extends State<_ChallengeDetailSheet> {
       ),
     );
   }
+
 }
 
 /// 한 줄 (· 제목 + 난이도칩 + 선택 버튼)
@@ -886,7 +1087,8 @@ class _RivalSection extends StatelessWidget {
                         child: _RivalCard(
                           name: rivals[i].name,
                           days: rivals[i].days,
-                          habit: rivals[i].habit,
+                          habit: rivals[i].myHabitTitle,
+                          avatarUrl: rivals[i].avatarUrl,
                           showRightButton: rivals[i].showRightButton,
                         ),
                       ),
@@ -936,11 +1138,13 @@ class _RivalCard extends StatelessWidget {
   final int days;
   final String habit;
   final bool showRightButton;
+  final String? avatarUrl;
 
   const _RivalCard({
     required this.name,
     required this.days,
     required this.habit,
+    required this.avatarUrl,
     this.showRightButton = true,
   });
 
@@ -1092,12 +1296,23 @@ class _RivalCard extends StatelessWidget {
               Positioned(
                 left: 16,
                 top: 6,
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFFD9D9D9),
+                child: ClipOval(
+                  child: avatarUrl == null || avatarUrl!.isEmpty
+                      ? Container(
+                    width: 52,
+                    height: 52,
+                    color: const Color(0xFFD9D9D9),
+                  )
+                      : Image.network(
+                    avatarUrl!,
+                    width: 52,
+                    height: 52,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 52,
+                      height: 52,
+                      color: const Color(0xFFD9D9D9),
+                    ),
                   ),
                 ),
               ),
