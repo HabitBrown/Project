@@ -1089,6 +1089,7 @@ class _RivalSection extends StatelessWidget {
                           days: rivals[i].days,
                           habit: rivals[i].myHabitTitle,
                           avatarUrl: rivals[i].avatarUrl,
+                          duelId: rivals[i].duelId,
                           showRightButton: rivals[i].showRightButton,
                         ),
                       ),
@@ -1139,12 +1140,14 @@ class _RivalCard extends StatelessWidget {
   final String habit;
   final bool showRightButton;
   final String? avatarUrl;
+  final int duelId;
 
   const _RivalCard({
     required this.name,
     required this.days,
     required this.habit,
     required this.avatarUrl,
+    required this.duelId,
     this.showRightButton = true,
   });
 
@@ -1246,7 +1249,10 @@ class _RivalCard extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => const HashFightPage(),
+                                  builder: (_) => HashFightPage(
+                                    duelId: duelId,
+                                    partnerName: name,
+                                  ),
                                 ),
                               );
                             },

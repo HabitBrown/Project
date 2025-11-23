@@ -322,6 +322,16 @@ def accept_exchange_request(
     # if opponent_uh.status != "completed_success":
     #     raise HTTPException(status_code=400, detail="완료된 습관만 선택할 수 있습니다.")
 
+    owner_side_method = opponent_uh.method       # 내가 도전하는 습관 = 상대가 하던 방식
+    challenger_side_method = owner_habit.method
+    
+    for m in (owner_side_method, challenger_side_method):
+        if m not in ("photo", "text"):
+            raise HTTPException(
+                status_code=400,
+                detail="교환에 사용할 수 없는 인증 방식입니다.",
+            )
+            
     now = datetime.now()
 
     # 3) Duel 생성
@@ -365,7 +375,7 @@ def accept_exchange_request(
         user_id=ex.from_user_id,          # 송강호
         source_habit_id=owner_habit.id,   # 코테
         title=owner_habit.title,
-        method=ex.method,
+        method=owner_habit.method,
         deadline_local=ex.deadline_local,
         days_of_week=ex.days_of_week,
         period_start=ex.start_date,

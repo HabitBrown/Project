@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/base_url.dart';
 /// -----------------------------
 /// 색상 모음 (이 화면 전용)
 /// -----------------------------
@@ -10,18 +13,16 @@ class HashFightColors {
   static const brick = Color(0xFFC32B2B); // 진한 빨간 텍스트
   static const danger = Color(0xFFE25B5B); // 느낌표 배경
   static const bubble = Color(0xFFF6F1DC); // 일반 말풍선
-  static const failBubble = Color(0xFFF3D49B); // 실패 말풍선
+  static const failBubble = Color(0xFFF3D49B); // 실패 말풍선 & 인증 말풍선 색
   static const divider = Color(0xFFD8CBB6); // 테두리
   static const green = Color(0xFFAFDBAE); // 버튼
   static const avatarGrey = Color(0xFFE0E0E0); // 프로필 원
-  static const talkColor = Color(0xFFF3C75A);
+  static const talkColor = Color(0xFFF3C75A); // (예비) 인증 말풍선 노랑
 }
 
 /// -----------------------------
 /// DTO / 구조체 정의
 /// -----------------------------
-/// ===== 백엔드 Certification DTO =====
-
 enum CertMethod { photo, text }
 enum CertStatus { success, fail }
 
@@ -58,12 +59,9 @@ class Certification {
       userHabitId: json['user_habit_id'] as int?,
       duelId: json['duel_id'] as int?,
       tsUtc: DateTime.parse(json['ts_utc'] as String),
-      method: (json['method'] == 'photo')
-          ? CertMethod.photo
-          : CertMethod.text,
-      status: (json['status'] == 'success')
-          ? CertStatus.success
-          : CertStatus.fail,
+      method: (json['method'] == 'photo') ? CertMethod.photo : CertMethod.text,
+      status:
+      (json['status'] == 'success') ? CertStatus.success : CertStatus.fail,
       textContent: json['text_content'] as String?,
       photoAssetId: json['photo_asset_id'] as int?,
       failReason: json['fail_reason'] as String?,
@@ -71,19 +69,17 @@ class Certification {
   }
 }
 
-
-//매핑 함수
+// 매핑 함수
 /// Certification → HashFightMessage 변환
 HashFightMessage certificationToHashFightMessage({
   required Certification cert,
-  required int myUserId,        // 내가 누구인지
-  required String habitTitle,   // 습관 이름 (필요하면 서버에서 같이 내려줌)
-  String? photoUrl,             // photo_asset_id → storage_url 로 변환한 값
+  required int myUserId, // 내가 누구인지
+  required String habitTitle, // 습관 이름 (필요하면 서버에서 같이 내려줌)
+  String? photoUrl, // photo_asset_id → storage_url 로 변환한 값
 }) {
   // 1) 누가 보낸 건지 (나 vs 상대)
-  final sender = (cert.userId == myUserId)
-      ? HashFightSender.me
-      : HashFightSender.partner;
+  final sender =
+  (cert.userId == myUserId) ? HashFightSender.me : HashFightSender.partner;
 
   // 2) 메시지 타입 매핑
   late HashFightMessageType type;
@@ -107,24 +103,16 @@ HashFightMessage certificationToHashFightMessage({
 
   return HashFightMessage(
     id: cert.id.toString(),
-    createdAt: cert.tsUtc.toLocal(),  // UTC → 로컬 시간
+    createdAt: cert.tsUtc.toLocal(), // UTC → 로컬 시간
     habitTitle: habitTitle,
     sender: sender,
     type: type,
     imageUrl: (cert.method == CertMethod.photo) ? photoUrl : null,
     text: (cert.method == CertMethod.text)
         ? cert.textContent
-        : cert.failReason,   // 실패 말풍선에 보여줄 문구로 사용
+        : cert.failReason, // 실패 말풍선에 보여줄 문구로 사용
   );
 }
-
-
-
-
-
-
-
-
 
 /// 누가 보낸 메시지인가
 enum HashFightSender { me, partner }
@@ -165,11 +153,16 @@ class HashFightConversation {
   final int remainFailCount; // 남은 인증 실패 가능 횟수
   final List<HashFightMessage> messages;
 
+  final String? partnerPhotoUrl;
+  final String? myPhotoUrl;
+
   HashFightConversation({
     required this.id,
     required this.partnerName,
     required this.remainFailCount,
     required this.messages,
+    this.partnerPhotoUrl,
+    this.myPhotoUrl,
   });
 }
 
@@ -188,34 +181,105 @@ class HashObjectionPayload {
   });
 }
 
+/// =======================
+/// 말풍선 CustomPainter
+/// =======================
+/// 1번 이미지처럼: 둥근 직사각형 + 옆에 삼각 꼬리
+class _ChatBubblePainter extends CustomPainter {
+  final bool isMe; // true면 오른쪽 말풍선, false면 왼쪽 말풍선
+  final Color color;
+
+  // 모양 튜닝용
+  final double cornerRadius;
+  final double tailWidth;
+  final double tailHeight;
+  final double tailOffsetY;
+
+  _ChatBubblePainter({
+    required this.isMe,
+    required this.color,
+    this.cornerRadius = 18,
+    this.tailWidth = 16,
+    this.tailHeight = 16,
+    this.tailOffsetY = 18,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    if (isMe) {
+      // 오른쪽 말풍선은 좌우 반전
+      canvas.save();
+      canvas.translate(size.width, 0);
+      canvas.scale(-1, 1);
+    }
+
+    // 메인 둥근 직사각형 (왼쪽에 꼬리 자리만 tailWidth 만큼 비워둠)
+    final rrect = RRect.fromLTRBR(
+      tailWidth,
+      0,
+      size.width,
+      size.height,
+      Radius.circular(cornerRadius),
+    );
+    canvas.drawRRect(rrect, paint);
+
+    // 왼쪽으로 튀어나오는 꼬리
+    final tailPath = Path()
+      ..moveTo(tailWidth, tailOffsetY)
+      ..lineTo(0, tailOffsetY + tailHeight / 2)
+      ..lineTo(tailWidth, tailOffsetY + tailHeight)
+      ..close();
+    canvas.drawPath(tailPath, paint);
+
+    if (isMe) {
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 /// -----------------------------
 /// 메인 화면 위젯
 /// -----------------------------
-/// 지금은 더미 데이터로만 화면을 그리고,
-/// 나중에 백엔드 붙일 때 이 페이지 안에서 API 호출 + DTO 매핑만 바꿔주면 됨.
 class HashFightPage extends StatefulWidget {
-  const HashFightPage({Key? key}) : super(key: key);
+  final int duelId;
+  final String partnerName;
+
+  const HashFightPage({
+    Key? key,
+    required this.duelId,
+    required this.partnerName,
+  }) : super(key: key);
 
   @override
   State<HashFightPage> createState() => _HashFightPageState();
 }
 
 class _HashFightPageState extends State<HashFightPage> {
-  late final HashFightConversation _conversation;
+  HashFightConversation? _conversation;
 
   bool _showObjection = false;
   String? _targetMessageId;
 
   bool _reasonPhotoWrong = false;
-
   bool _reasonEtc = false;
   final TextEditingController _etcController = TextEditingController();
+
   bool _showGiveUpDialog = false;
+
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _conversation = _buildDummyConversation(); // 일단 더미 데이터로 화면 테스트
+    _loadConversation(); // 일단 더미 데이터로 화면 테스트
   }
 
   @override
@@ -224,58 +288,186 @@ class _HashFightPageState extends State<HashFightPage> {
     super.dispose();
   }
 
-  /// 더미 데이터 (백엔드 붙기 전까지 화면용)
-  HashFightConversation _buildDummyConversation() {
-    final now = DateTime.now();
-    final yesterday = now.subtract(const Duration(days: 1)); // 👈 어제 날짜
 
-    return HashFightConversation(
-      id: 'conv-1',
-      partnerName: '송강호',
-      remainFailCount: 1,
-      messages: [
-        // 1) 상대방이 사진으로 인증 (어제)
-        HashFightMessage(
-          id: 'm1',
-          createdAt: yesterday,
-          habitTitle: '영양제 챙겨먹기',
-          sender: HashFightSender.partner,
-          type: HashFightMessageType.photo,
-          imageUrl: 'lib/assets/image2/pill.jpg',
-        ),
-        // 2) 내가 오늘 사진으로 인증
-        HashFightMessage(
-          id: 'm2',
-          createdAt: now,
-          habitTitle: '코딩테스트 하기',
-          sender: HashFightSender.me,
-          type: HashFightMessageType.photo,
-          imageUrl: 'lib/assets/image2/coding.png',
-        ),
-        // 3) 상대가 시간초과로 인증 실패 (왼쪽 노란 말풍선)
-        HashFightMessage(
-          id: 'm3',
-          createdAt: now,
-          habitTitle: '코딩테스트 하기',
-          sender: HashFightSender.partner,
-          type: HashFightMessageType.failTime,
-          text: '정해진 인증 시간이 지나서\n인증 실패 하였습니다.',
-        ),
-        // 4) 내가 사진을 안 올려서 실패 (오른쪽 노란 말풍선)
-        HashFightMessage(
-          id: 'm4',
-          createdAt: now,
-          habitTitle: '코딩테스트 하기',
-          sender: HashFightSender.me,
-          type: HashFightMessageType.wrongCert,
-          text: '사진을 등록하지 않아\n인증 실패 하였습니다.',
-        ),
-      ],
-    );
+  Future<void> _loadConversation() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token');
+
+      if (token == null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '로그인 정보가 없습니다.';
+        });
+        return;
+      }
+
+      // 로그인 성공 시에 prefs.setInt('user_id', ...) 해두었다고 가정
+      final myUserId = prefs.getInt('user_id');
+      if (myUserId == null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '내 user_id 정보를 찾을 수 없습니다.';
+        });
+        return;
+      }
+
+      final uri = Uri.parse('$kBaseUrl/duels/${widget.duelId}/conversation');
+
+      final res = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (res.statusCode != 200) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '대화 정보를 불러오지 못했습니다. (${res.statusCode})';
+        });
+        return;
+      }
+
+      final Map<String, dynamic> data = jsonDecode(res.body);
+
+      final int duelId = data['duel_id'] as int;
+      final String partnerName =
+          (data['partner_nickname'] as String?) ?? widget.partnerName;
+      final int remainFailCount = data['remain_fail_count'] as int;
+
+      //상대방 프로필 사진 URL
+      final String? partnerProfileRaw =
+      data['partner_profile_picture'] as String?;
+      String? partnerPhotoUrl;
+      if (partnerProfileRaw != null && partnerProfileRaw.isNotEmpty) {
+        if (partnerProfileRaw.startsWith('http')) {
+          partnerPhotoUrl = partnerProfileRaw;
+        } else {
+          partnerPhotoUrl = '$kBaseUrl$partnerProfileRaw';
+        }
+      }
+
+      //내 프로필 사진 URL (로그인 시 SharedPreferences에 저장했다고 가정)
+      final String? myProfileRaw = prefs.getString('profile_picture');
+      String? myPhotoUrl;
+      if (myProfileRaw != null && myProfileRaw.isNotEmpty) {
+        if (myProfileRaw.startsWith('http')) {
+          myPhotoUrl = myProfileRaw;
+        } else {
+          myPhotoUrl = '$kBaseUrl$myProfileRaw';
+        }
+      }
+      final List<dynamic> messagesJson = data['messages'] as List<dynamic>;
+
+      final List<HashFightMessage> messages = [];
+
+      for (final m in messagesJson) {
+        final Map<String, dynamic> msgMap = m as Map<String, dynamic>;
+
+        // 1) Certification DTO로 파싱
+        final cert = Certification.fromJson(msgMap);
+
+        // 2) habit_title 은 JSON에서 따로 꺼내서 넣어줌
+        final String habitTitle = (msgMap['habit_title'] as String?) ?? '';
+
+        // 3) 백엔드에서 내려준 storage_url
+        final String? storageUrl = msgMap['photo_url'] as String?;
+
+        String? fullPhotoUrl;
+        if (storageUrl != null && storageUrl.isNotEmpty) {
+          if (storageUrl.startsWith('http')) {
+            fullPhotoUrl = storageUrl;
+          } else {
+            fullPhotoUrl = '$kBaseUrl$storageUrl';  // ex) http://10.0.2.2:8000/uploads/xxx.jpg
+          }
+        }
+
+
+        // 4) Certification → HashFightMessage 변환
+        final msg = certificationToHashFightMessage(
+          cert: cert,
+          myUserId: myUserId,
+          habitTitle: habitTitle,
+          photoUrl: fullPhotoUrl,
+        );
+
+        messages.add(msg);
+      }
+
+      setState(() {
+        _conversation = HashFightConversation(
+          id: duelId.toString(),
+          partnerName: partnerName,
+          remainFailCount: remainFailCount,
+          messages: messages,
+          partnerPhotoUrl: partnerPhotoUrl,
+          myPhotoUrl: myPhotoUrl,
+        );
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '에러가 발생했습니다: $e';
+      });
+    }
   }
+
 
   @override
   Widget build(BuildContext context) {
+    // 1) 로딩 중
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: HashFightColors.cream,
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // 2) 에러 발생
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: HashFightColors.cream,
+        appBar: AppBar(
+          backgroundColor: HashFightColors.brown,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          title: Text(
+            widget.partnerName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        body: Center(
+          child: Text(
+            _errorMessage!,
+            style: const TextStyle(
+              color: HashFightColors.brick,
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    // 3) 정상 데이터 상태 (_conversation 이 null 이 아니라고 가정)
+    final conv = _conversation!;
+
     return Scaffold(
       backgroundColor: HashFightColors.cream,
       appBar: AppBar(
@@ -286,7 +478,7 @@ class _HashFightPageState extends State<HashFightPage> {
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         title: Text(
-          _conversation.partnerName,
+          conv.partnerName,
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -309,22 +501,19 @@ class _HashFightPageState extends State<HashFightPage> {
               ),
               onPressed: () {
                 setState(() {
-                  _showGiveUpDialog = true;  // 내기 포기 팝업 ON
-                  _showObjection = false;    // 이의제기 팝업 OFF
+                  _showGiveUpDialog = true; // 내기 포기 팝업 ON
+                  _showObjection = false;   // 이의제기 팝업 OFF
                 });
               },
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // 🔥 이미지 넣는 자리 (경로 수정!)
                   Image.asset(
                     'lib/assets/image2/sad_potato.png',
                     width: 20,
                     height: 20,
                   ),
-
                   const SizedBox(width: 7),
-
                   const Text(
                     '포기\n하기',
                     textAlign: TextAlign.center,
@@ -346,7 +535,7 @@ class _HashFightPageState extends State<HashFightPage> {
             children: [
               const SizedBox(height: 24),
               Text(
-                '남은 인증 실패 가능 횟수: ${_conversation.remainFailCount}회',
+                '남은 인증 실패 가능 횟수: ${conv.remainFailCount}회',
                 style: const TextStyle(
                   color: HashFightColors.brick,
                   fontSize: 16,
@@ -360,11 +549,11 @@ class _HashFightPageState extends State<HashFightPage> {
                     horizontal: 20,
                     vertical: 8,
                   ),
-                  itemCount: _conversation.messages.length,
+                  itemCount: conv.messages.length,
                   itemBuilder: (context, index) {
-                    final msg = _conversation.messages[index];
+                    final msg = conv.messages[index];
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 16.0),
+                      padding: const EdgeInsets.only(bottom: 24.0),
                       child: _buildMessage(msg),
                     );
                   },
@@ -372,14 +561,12 @@ class _HashFightPageState extends State<HashFightPage> {
               ),
             ],
           ),
-
           if (_showObjection) _buildObjectionDialog(context),
           if (_showGiveUpDialog) _buildGiveUpDialog(),
         ],
       ),
     );
   }
-
   /// 메시지 타입/보낸 사람에 따라 말풍선 모양을 다르게 그림
   Widget _buildMessage(HashFightMessage msg) {
     final dateStr =
@@ -410,24 +597,21 @@ class _HashFightPageState extends State<HashFightPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildAvatarWithName(_conversation.partnerName),
+        _buildAvatarWithName(isPartner: true),
         const SizedBox(width: 8),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _buildDateAndTitle(date, msg.habitTitle),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // 말풍선 (사진/텍스트)
-                  Flexible(child: _buildVerifyContent(msg)),
-                  const SizedBox(width: 6),
-                  // 이의제기 버튼 (말풍선 오른쪽 옆)
-                  _exclamationButton(() => _openObjection(msg.id)),
-                ],
+              Flexible(
+                child: _buildVerifyContent(
+                  msg: msg,
+                  date: date,
+                  isMe: false,
+                ),
               ),
+              const SizedBox(width: 6),
+              _exclamationButton(() => _openObjection(msg.id)),
             ],
           ),
         ),
@@ -445,56 +629,117 @@ class _HashFightPageState extends State<HashFightPage> {
         const Spacer(),
         Expanded(
           flex: 4,
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              _buildDateAndTitle(date, msg.habitTitle, alignEnd: true),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const SizedBox(width: 6),
-                  // 이의제기 버튼 (말풍선 오른쪽 옆)
-                  _exclamationButton(() => _openObjection(msg.id)),
-                  // 말풍선 (사진/텍스트)
-                  Flexible(child: _buildVerifyContent(msg)),
-                ],
+              _exclamationButton(() => _openObjection(msg.id)),
+              const SizedBox(width: 6),
+              Flexible(
+                child: _buildVerifyContent(
+                  msg: msg,
+                  date: date,
+                  isMe: true,
+                ),
               ),
             ],
           ),
         ),
         const SizedBox(width: 8),
-        _buildAvatarWithName('나'),
+        _buildAvatarWithName(isPartner: false),
       ],
     );
   }
 
-  /// 인증 말풍선 안쪽 내용 (사진 or 텍스트)
-  Widget _buildVerifyContent(HashFightMessage msg) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: HashFightColors.bubble,
-        borderRadius: BorderRadius.circular(16),
+  /// ✅ CustomPainter를 사용한 인증 말풍선(날짜 + 제목 + 사진/텍스트)
+  ///    모양은 1번 이미지처럼: 둥근 말풍선 + 왼쪽/오른쪽 꼬리
+  Widget _buildVerifyContent({
+    required HashFightMessage msg,
+    required String date,
+    required bool isMe,
+  }) {
+    const double tailWidth = 16.0;
+    debugPrint('imageUrl = ${msg.imageUrl}');
+    return CustomPaint(
+      painter: _ChatBubblePainter(
+        isMe: isMe,
+        // ✅ 여기 색을 failBubble 로 변경
+        color: HashFightColors.failBubble,
       ),
-      child: msg.type == HashFightMessageType.photo
-          ? AspectRatio(
-        aspectRatio: 4 / 3,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: msg.imageUrl != null
-              ? Image.asset(
-            msg.imageUrl!,
-            fit: BoxFit.cover,
-          )
-              : Container(color: Colors.black),
+      child: Padding(
+        // 왼쪽 말풍선은 꼬리 때문에 조금 더 안쪽에서 시작
+        padding: EdgeInsets.fromLTRB(
+          isMe ? 16 : tailWidth + 10,
+          12,
+          isMe ? tailWidth + 10 : 16,
+          16,
         ),
-      )
-          : Text(
-        msg.text ?? '',
-        style: const TextStyle(
-          fontSize: 14,
-          color: HashFightColors.dark,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 날짜
+            Text(
+              date,
+              style: const TextStyle(
+                fontSize: 13,
+                color: HashFightColors.dark,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+
+            // • 습관 제목
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '• ',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: HashFightColors.dark,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    msg.habitTitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: HashFightColors.dark,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // 실제 인증 내용 (사진 or 텍스트)
+            if (msg.type == HashFightMessageType.photo)
+              AspectRatio(
+                aspectRatio: 4 / 3,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18), // 둥근 사각형
+                  child: msg.imageUrl != null
+                      ? Image.network(
+                        msg.imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                          Container(color: Colors.black),
+                  )
+                      : Container(color: Colors.black),
+                ),
+              )
+            else
+              Text(
+                msg.text ?? '',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: HashFightColors.dark,
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -507,7 +752,7 @@ class _HashFightPageState extends State<HashFightPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildAvatarWithName(_conversation.partnerName),
+        _buildAvatarWithName(isPartner: true),
         const SizedBox(width: 8),
         Expanded(
           child: Column(
@@ -568,12 +813,12 @@ class _HashFightPageState extends State<HashFightPage> {
           ),
         ),
         const SizedBox(width: 8),
-        _buildAvatarWithName('나'),
+        _buildAvatarWithName(isPartner: false),
       ],
     );
   }
 
-  /// 실패 말풍선 안쪽 노란 박스
+  /// 실패 말풍선 안쪽 노란 박스 (기존 그대로)
   Widget _buildFailContent(HashFightMessage msg) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -588,61 +833,32 @@ class _HashFightPageState extends State<HashFightPage> {
     );
   }
 
-  // 날짜 + 습관 제목
-  Widget _buildDateAndTitle(String date, String title,
-      {bool alignEnd = false}) {
-    return Column(
-      crossAxisAlignment:
-      alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 2),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: HashFightColors.talkColor,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              color: HashFightColors.dark,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(height: 5),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            SizedBox(width: 5),
-          ],
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(width: 5),
-            Text(
-              date,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: HashFightColors.dark,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   // 아바타 + 이름
-  Widget _buildAvatarWithName(String name) {
+  Widget _buildAvatarWithName({required bool isPartner}) {
+    final String name = isPartner ? _conversation!.partnerName : '나';
+    final String? photoUrl =
+    isPartner ? _conversation!.partnerPhotoUrl : _conversation!.myPhotoUrl;
+
     return Column(
       children: [
-        const CircleAvatar(
-          radius: 24,
-          backgroundColor: HashFightColors.avatarGrey,
+        ClipOval(
+          child: (photoUrl == null || photoUrl.isEmpty)
+              ? Container(
+            width: 48,
+            height: 48,
+            color: HashFightColors.avatarGrey,
+          )
+              : Image.network(
+            photoUrl,
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              width: 48,
+              height: 48,
+              color: HashFightColors.avatarGrey,
+            ),
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -747,8 +963,6 @@ class _HashFightPageState extends State<HashFightPage> {
                         elevation: 0,
                       ),
                       onPressed: () {
-                        // TODO: 여기서 백엔드에 "포기하기" API 호출
-                        // 예시로는 그냥 화면 나가기:
                         Navigator.of(context).pop(); // 내기 화면 종료
                       },
                       child: const Text(
@@ -777,7 +991,6 @@ class _HashFightPageState extends State<HashFightPage> {
                         elevation: 0,
                       ),
                       onPressed: () {
-                        // 팝업만 닫기
                         setState(() {
                           _showGiveUpDialog = false;
                         });
@@ -804,9 +1017,7 @@ class _HashFightPageState extends State<HashFightPage> {
                       shape: BoxShape.circle,
                       color: HashFightColors.cream,
                     ),
-                    child:
-                    Image.asset('lib/assets/image2/sad_potato.png'),
-
+                    child: Image.asset('lib/assets/image2/sad_potato.png'),
                   ),
                 ),
               ],
@@ -830,7 +1041,7 @@ class _HashFightPageState extends State<HashFightPage> {
       },
       child: Center(
         child: GestureDetector(
-          onTap: () {},  // 팝업 내부는 닫히지 않게
+          onTap: () {}, // 팝업 내부는 닫히지 않게
           child: Container(
             width: 260,
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
@@ -857,7 +1068,8 @@ class _HashFightPageState extends State<HashFightPage> {
                 _buildCheckRow(
                   value: _reasonPhotoWrong,
                   label: '인증 사진/글이 잘못됐어요',
-                  onChanged: (v) => setState(() => _reasonPhotoWrong = v ?? false),
+                  onChanged: (v) =>
+                      setState(() => _reasonPhotoWrong = v ?? false),
                 ),
                 const SizedBox(height: 6),
                 _buildCheckRow(
@@ -877,7 +1089,8 @@ class _HashFightPageState extends State<HashFightPage> {
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(4),
-                      borderSide: const BorderSide(color: HashFightColors.divider),
+                      borderSide:
+                      const BorderSide(color: HashFightColors.divider),
                     ),
                   ),
                 ),
@@ -906,6 +1119,8 @@ class _HashFightPageState extends State<HashFightPage> {
                         etcContent: _etcController.text.trim(),
                       );
 
+                      // TODO: payload 백엔드로 전송
+
                       setState(() {
                         _showObjection = false;
                       });
@@ -927,7 +1142,6 @@ class _HashFightPageState extends State<HashFightPage> {
     );
   }
 
-
   Widget _buildCheckRow({
     required bool value,
     required String label,
@@ -948,7 +1162,8 @@ class _HashFightPageState extends State<HashFightPage> {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(fontSize: 13, color: HashFightColors.dark),
+            style:
+            const TextStyle(fontSize: 13, color: HashFightColors.dark),
           ),
         ),
       ],
