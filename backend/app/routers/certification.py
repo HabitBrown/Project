@@ -82,7 +82,7 @@ def auto_fail_overdue_habits_for_today(
             text_content=None,
             photo_asset_id=None,
             status="fail",
-            fail_reason="deadline passed",
+            fail_reason="정해진 인증시간이 지나서 인증 실패 했습니다.",
             cert_date=today,
         )
         db.add(cert)
