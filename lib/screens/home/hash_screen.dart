@@ -272,6 +272,23 @@ class _HashScreenState extends State<HashScreen> {
     }
   }
 
+  Future<void> _openHashFight(RivalInfo rival) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HashFightPage(
+          duelId: rival.duelId,
+          partnerName: rival.name,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      // 포기 후 돌아온 경우
+      await _loadRivals();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -303,7 +320,10 @@ class _HashScreenState extends State<HashScreen> {
                 ),
               ),
               SliverToBoxAdapter(
-                child: _RivalSection(rivals: _rivals),
+                child: _RivalSection(
+                    rivals: _rivals,
+                    onTapRival: _openHashFight,
+                ),
               ),
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -1033,9 +1053,14 @@ class _ChallengeDetailRow extends StatelessWidget {
 /// 싸우고 있는 감자 영역
 /// =======================
 class _RivalSection extends StatelessWidget {
-  const _RivalSection({super.key, required this.rivals});
+  const _RivalSection({
+    super.key,
+    required this.rivals,
+    this.onTapRival,
+  });
 
   final List<RivalInfo> rivals;
+  final void Function(RivalInfo rival)? onTapRival;
 
   @override
   Widget build(BuildContext context) {
@@ -1091,6 +1116,7 @@ class _RivalSection extends StatelessWidget {
                           avatarUrl: rivals[i].avatarUrl,
                           duelId: rivals[i].duelId,
                           showRightButton: rivals[i].showRightButton,
+                          onTap: () => onTapRival?.call(rivals[i]),
                         ),
                       ),
                     ),
@@ -1141,6 +1167,7 @@ class _RivalCard extends StatelessWidget {
   final bool showRightButton;
   final String? avatarUrl;
   final int duelId;
+  final VoidCallback? onTap;
 
   const _RivalCard({
     required this.name,
@@ -1149,6 +1176,7 @@ class _RivalCard extends StatelessWidget {
     required this.avatarUrl,
     required this.duelId,
     this.showRightButton = true,
+    this.onTap,
   });
 
   @override
@@ -1245,17 +1273,7 @@ class _RivalCard extends StatelessWidget {
                         child: Center(
                           child: InkWell(
                             borderRadius: BorderRadius.circular(16),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => HashFightPage(
-                                    duelId: duelId,
-                                    partnerName: name,
-                                  ),
-                                ),
-                              );
-                            },
+                            onTap: onTap,
                             child: Transform.translate(
                               offset: const Offset(-6, 4), // 살짝 왼쪽·아래로
                               child: Padding(

@@ -44,7 +44,8 @@ class DuelService {
     required int exchangeRequestId,
     required int opponentUserHabitId,
     required HabitSetupData setup,
-  }) async {
+  }
+  ) async {
     final token = await _token();
     final uri = Uri.parse('$kBaseUrl/duels/from-exchange');
 
@@ -69,5 +70,26 @@ class DuelService {
     );
 
     return res.statusCode == 200 || res.statusCode == 201;
+  }
+
+  Future<void> giveUpDuel(int duelId) async {
+    final token = await _token();
+    if (token == null) {
+      throw Exception("로그인 필요");
+    }
+
+    final uri = Uri.parse('$kBaseUrl/duels/$duelId/give-up');
+
+    final res = await _client.post(
+      uri,
+      headers: {
+        "Authorization": "Bearer $token",
+        "Content-Type": "application/json",
+      },
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception("듀얼 포기 실패: ${res.statusCode} ${res.body}");
+    }
   }
 }

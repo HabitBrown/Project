@@ -1,9 +1,9 @@
 # app/routers/duel.py
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -22,6 +22,8 @@ from app.schemas.duel import(
     ActiveDuelItem, DuelFromExchangeIn,
     DuelConversationOut,DuelConversationMessage)
 
+FAIL_LIMIT = 3 
+
 router = APIRouter(prefix="/duels", tags=["duels"])
 
 
@@ -31,6 +33,187 @@ def _encode_days_of_week(weekdays: List[int]) -> int:
         if 1 <= d <= 7:
             mask |= (1 << (d - 1))
     return mask
+
+def _forfeit_duel(
+    db: Session,
+    duel: Duel,
+    loser_user_id: int,
+) -> None:
+    """
+    포기 / 실패 초과 등으로 한 쪽이 패배했을 때:
+    - 진 사람: completed_fail + is_active=False + completed_at
+    - 이긴 사람: 계속 개인 습관 도전 (status는 active 유지, duel_id만 제거)
+    - Duel: finished + result=forfeit_owner / forfeit_challenger
+    """
+    if duel.status != "active":
+        return
+
+    now_utc = datetime.now(timezone.utc)
+
+    # duel에 연결된 user_habits 두 개 가져오기
+    duel_habits: list[UserHabit] = (
+        db.query(UserHabit)
+        .filter(UserHabit.duel_id == duel.id)
+        .all()
+    )
+
+    for uh in duel_habits:
+        if uh.user_id == loser_user_id:
+            # 패배한 쪽: 실패로 종료
+            uh.status = "completed_fail"
+            uh.is_active = False
+            uh.completed_at = now_utc
+            # duel_id는 굳이 지워도 되고 안 지워도 되지만, 깔끔하게 None
+            uh.duel_id = None
+        else:
+            # 이긴 쪽: duel 관계만 끊고 개인 습관 도전으로 이어가기
+            uh.duel_id = None
+            # status / is_active 는 기존(active) 그대로 둔다
+
+    duel.status = "finished"
+    if loser_user_id == duel.owner_user_id:
+        duel.result = "forfeit_owner"
+    else:
+        duel.result = "forfeit_challenger"
+
+def _finish_duel_both_end(
+    db: Session,
+    duel: Duel,
+    owner_status: str,
+    challenger_status: str,
+    result: str,
+) -> None:
+    """
+    둘 다 끝나는 케이스(예: 1달 지나서 둘 다 성공 / 둘 다 실패 등)
+    - 두 사람 모두 is_active=False + completed_at
+    - status 는 인자로 받은 값으로 설정
+    - duel.status="finished", duel.result=전달값
+    """
+    if duel.status != "active":
+        return
+
+    now_utc = datetime.now(timezone.utc)
+
+    duel_habits: list[UserHabit] = (
+        db.query(UserHabit)
+        .filter(UserHabit.duel_id == duel.id)
+        .all()
+    )
+
+    for uh in duel_habits:
+        if uh.user_id == duel.owner_user_id:
+            uh.status = owner_status
+        elif uh.user_id == duel.challenger_user_id:
+            uh.status = challenger_status
+        else:
+            # 이론상 없지만 방어
+            continue
+
+        uh.is_active = False
+        uh.completed_at = now_utc
+        uh.duel_id = None  # duel 종료됐으니 관계 끊기
+
+    duel.status = "finished"
+    duel.result = result
+
+def _check_and_finish_duel_by_rules(
+    db: Session,
+    duel: Duel,
+) -> None:
+    """
+    규칙에 따라 듀얼 종료 여부를 판단하고 필요 시 종료 처리.
+    1) 인증 실패 횟수 FAIL_LIMIT 초과 → 진 쪽 completed_fail, 상대는 개인 도전
+    2) end_date 지나도 여전히 active 이고, FAIL_LIMIT 초과자 없으면
+       → 둘 다 completed_success 로 종료
+    """
+    if duel.status != "active":
+        return
+
+    today = date.today()
+
+    # --- 1) 유저별 실패 횟수 계산 ---
+    rows = (
+        db.query(
+            Certification.user_id,
+            func.count(Certification.id).label("fail_count") # pylint: disable=not-callable
+        )
+        .filter(
+            Certification.duel_id == duel.id,
+            Certification.status == "fail",
+        )
+        .group_by(Certification.user_id)
+        .all()
+    )
+
+    fail_counts = {user_id: cnt for (user_id, cnt) in rows}
+
+    owner_fail = fail_counts.get(duel.owner_user_id, 0)
+    challenger_fail = fail_counts.get(duel.challenger_user_id, 0)
+
+    # FAIL_LIMIT 초과한 사람 있는지
+    owner_over = owner_fail > FAIL_LIMIT
+    challenger_over = challenger_fail > FAIL_LIMIT
+
+    if owner_over or challenger_over:
+        # 둘 다 초과하면 둘 다 실패로 끝내고 draw 처리
+        if owner_over and challenger_over:
+            _finish_duel_both_end(
+                db,
+                duel,
+                owner_status="completed_fail",
+                challenger_status="completed_fail",
+                result="draw",
+            )
+        elif owner_over:
+            _forfeit_duel(db, duel, loser_user_id=duel.owner_user_id)
+        else:
+            _forfeit_duel(db, duel, loser_user_id=duel.challenger_user_id)
+
+        db.commit()
+        return
+
+    # --- 2) 기간 종료 체크 ---
+    # 아직 누구도 실패 초과 안 했고, 오늘이 end_date 지나갔다면 둘 다 성공 처리
+    if today > duel.end_date:
+        _finish_duel_both_end(
+            db,
+            duel,
+            owner_status="completed_success",
+            challenger_status="completed_success",
+            result="draw",  # 둘 다 성공 → 무승부 처리
+        )
+        db.commit()
+        return
+
+@router.post("/{duel_id}/give-up", status_code=status.HTTP_200_OK)
+def give_up_duel(
+    duel_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    1번 케이스:
+    - 해시톡방에서 포기 버튼을 누르면
+      → 포기한 쪽은 completed_fail + is_active=False
+      → 상대는 개인 습관 도전으로 계속
+      → duel 은 finished + forfeit_* 결과
+    """
+    duel = db.get(Duel, duel_id)
+    if duel is None:
+        raise HTTPException(status_code=404, detail="Duel not found")
+
+    if duel.status != "active":
+        raise HTTPException(status_code=400, detail="이미 종료된 내기입니다.")
+
+    if current_user.id not in (duel.owner_user_id, duel.challenger_user_id):
+        raise HTTPException(status_code=403, detail="내기가 아닙니다.")
+
+    # 현재 유저를 패배 처리
+    _forfeit_duel(db, duel, loser_user_id=current_user.id)
+    db.commit()
+
+    return {"detail": "듀얼을 포기하였습니다."}
+
 
 @router.get("/active", response_model=List[ActiveDuelItem])
 def get_active_duels(
@@ -248,6 +431,9 @@ def get_duel_conversation(
         # 내가 아닌 사람의 대화방은 볼 수 없음
         raise HTTPException(status_code=403, detail="Not a participant of this duel")
 
+    _check_and_finish_duel_by_rules(db, duel)
+    db.refresh(duel)
+    
     # 2) 상대방(파트너) 정보 결정
     if current_user.id == duel.owner_user_id:
         partner_id = duel.challenger_user_id
@@ -285,7 +471,6 @@ def get_duel_conversation(
     
     # 5) 남은 실패 가능 횟수 계산 (정책에 맞게 수정 가능)
     #    예: 한 사람당 최대 3번까지 실패 가능이라고 가정
-    FAIL_LIMIT = 3
     my_fail_count = sum(
         1
         for c in certs

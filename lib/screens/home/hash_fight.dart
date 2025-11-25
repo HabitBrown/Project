@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/base_url.dart';
+import '../../services/duel_service.dart';
 /// -----------------------------
 /// 색상 모음 (이 화면 전용)
 /// -----------------------------
@@ -962,8 +963,24 @@ class _HashFightPageState extends State<HashFightPage> {
                         ),
                         elevation: 0,
                       ),
-                      onPressed: () {
-                        Navigator.of(context).pop(); // 내기 화면 종료
+                      onPressed: () async {
+                        try{
+                          // 1) 백엔드에 듀얼 포기 요청
+                          await DuelService().giveUpDuel(widget.duelId);
+
+                          if (!mounted) return;
+
+                          // 2) 이전 화면으로 돌아가면서 "포기했다"는 정보 전달
+                          Navigator.of(context).pop(true);
+                        } catch(e){
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('내기 포기에 실패했습니다: $e')),
+                          );
+                          setState(() {
+                            _showGiveUpDialog = false;
+                          });
+                        }
                       },
                       child: const Text(
                         '예',
