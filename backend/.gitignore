@@ -51,3 +51,7 @@ venv/
 env/
 .env/
 ENV/
+
+# === Added: Ignore uploaded files ===
+uploads/
+**/uploads/
