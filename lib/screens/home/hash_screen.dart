@@ -155,11 +155,24 @@ class _HashScreenState extends State<HashScreen> {
   void initState() {
     super.initState();
     _currentHb = widget.hbCount;
-
     _challenges = [];
     _loadChallenges();
-
     _loadRivals();
+  }
+
+  @override
+  void didChangeDependencies(){
+    super.didChangeDependencies();
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if(args is Map && args['hbCount'] is int) {
+      final int fromRoute = args['hbCount'] as int;
+      if(fromRoute != _currentHb) {
+        setState(() {
+          _currentHb = fromRoute;
+        });
+      }
+    }
   }
 
   Future<void> _loadChallenges() async {
