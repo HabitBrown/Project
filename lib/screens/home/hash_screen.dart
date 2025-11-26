@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pbl_front/screens/home/alarm_screen.dart';
+import 'package:pbl_front/screens/home/shopping_screen.dart';
 import 'fight_setting.dart';
 import 'home_screen.dart' show AppImages, AppColors;
 import 'hash_fight.dart';
@@ -353,7 +355,12 @@ class _HashScreenState extends State<HashScreen> {
                   (route) => false,
             );
           } else if (i == 3) {
-            // TODO: 알림 화면 연결
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const AlarmScreen(),
+              ),
+            );
           } else if (i == 4) {
             // ✅ 마이페이지 이동
             Navigator.pushReplacementNamed(
@@ -431,7 +438,16 @@ class _HashTopBar extends StatelessWidget implements PreferredSizeWidget {
         const SizedBox(width: 10),
         IconButton(
           icon: Image.asset(_cartPath, width: 22, height: 22),
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => ShoppingScreen(
+                      hbCount:hbCount,
+                    ),
+                ),
+            );
+          },
         ),
         const SizedBox(width: 6),
       ],

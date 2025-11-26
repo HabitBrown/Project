@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:pbl_front/screens/home/shopping_screen.dart';
 
 // 이 파일에서는 Home 쪽에 있는 색/이미지 정의를 가져온다고 했으니까 그대로 둡니다.
 // home_screen.dart 안에 AppColors, AppImages 가 있다고 가정
@@ -524,7 +525,16 @@ class _PotatoTopBar extends StatelessWidget implements PreferredSizeWidget {
         const SizedBox(width: 10),
         IconButton(
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder:  (_) => ShoppingScreen(
+                      hbCount: hbCount,
+                    ),
+                ),
+            );
+          },
         ),
         const SizedBox(width: 6),
       ],

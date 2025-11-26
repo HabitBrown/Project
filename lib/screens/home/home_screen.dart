@@ -15,6 +15,8 @@ import '../../core/base_url.dart';
 import 'habit_setting.dart';
 import 'cert_page.dart';
 import 'mypage_screen.dart';
+import 'alarm_screen.dart';
+import 'shopping_screen.dart';
 
 /// =======================
 ///  공통 리소스 & 테마 정의
@@ -583,6 +585,13 @@ class _HomeScreenState extends State<HomeScreen> {
               '/hash',
               arguments: {'hbCount': _hb},
             );
+          } else if (i == 3){
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const AlarmScreen(),
+                ),
+            );
           } else if (i == 4) {
             Navigator.pushNamed(
               context,
@@ -650,7 +659,16 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
         const SizedBox(width: 10),
         IconButton(
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
-          onPressed: () {},
+          onPressed: () {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => ShoppingScreen(
+                        hbCount: hb,
+                    ),
+                ),
+            );
+          },
         ),
         const SizedBox(width: 6),
       ],

@@ -1,6 +1,7 @@
 // lib/screens/home/mypage_screen.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:pbl_front/screens/home/alarm_screen.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
@@ -643,7 +644,12 @@ class _MyPageScreenState extends State<MyPageScreen> {
           } else if (i == 2) {
             Navigator.pushNamed(context, '/home');
           } else if (i == 3) {
-            // TODO: 알림 화면
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const AlarmScreen()
+                ),
+            );
           } else if (i == 4) {
             // 이미 마이페이지
           }
