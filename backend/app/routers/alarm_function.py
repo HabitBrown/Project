@@ -1,6 +1,8 @@
-from backend.app.models.certification import Certification
+# Backend app router
 from backend.app.models.duel import Duel
 from backend.app.models.user import User
+
+# Datetime
 from datetime import date
 
 # Duel의 경우
@@ -30,7 +32,7 @@ def transfer_data_type(uid: int, input_type: str, title: str, action: str = "") 
         "pushType": input_type,
         "senderName": None,
         "title": title,
-        "action": "", # 공란으로 비워두기 (추가로 강조하고 싶은 텍스트)
+        "action": action,
         "dateText": now
     }
 
