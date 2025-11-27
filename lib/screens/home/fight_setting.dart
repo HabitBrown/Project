@@ -6,6 +6,7 @@ import 'home_screen.dart';
 import 'habit_setting.dart' show HabitSetupData, CertType, HabitSetupLogoPath;
 import '../../services/exchange_service.dart';
 import '../../services/duel_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 교환하기를 눌렀을 때 뜨는 "내기 설정" 페이지
 /// pop 할 때 HabitSetupData 를 돌려줌.
@@ -36,6 +37,10 @@ class _FightSettingPageState extends State<FightSettingPage> {
 
   final _duelService = DuelService();
   final _exchangeService = ExchangeService();
+
+  int? _currentHb;
+  bool _hbLoading = true;
+
   // 요일 선택
   final List<bool> _weekdaySelected = List<bool>.filled(7, false);
   static const _labels = ['월', '화', '수', '목', '금', '토', '일'];
@@ -55,6 +60,7 @@ class _FightSettingPageState extends State<FightSettingPage> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentHb();
 
     // 원래 난이도(1~5로 클램프) -> 그대로 사용 (고정)
     _difficulty = widget.initialDifficulty.clamp(1, 5);
@@ -122,6 +128,10 @@ class _FightSettingPageState extends State<FightSettingPage> {
   }
 
   Future<void> _submit() async {
+    if(_hbLoading && _currentHb != null && _currentHb! < _difficulty){
+      _showSnack('해시가 부족해서 이 난이도로 내기를 시작할 수 없어요.');
+      return;
+    }
     // 요일 검증
     final days = <int>[];
     for (int i = 0; i < 7; i++) {
@@ -170,31 +180,35 @@ class _FightSettingPageState extends State<FightSettingPage> {
       if (widget.exchangeRequestId != null &&
           widget.opponentUserHabitId != null) {
 
-        // 🎯 duel 생성 API 호출 (accept + duel 생성)
-        final ok = await DuelService().createDuelFromExchange(
+        // duel 생성 API 호출 (accept + duel 생성)
+        await _duelService.createDuelFromExchange(
           exchangeRequestId: widget.exchangeRequestId!,
           opponentUserHabitId: widget.opponentUserHabitId!,
           setup: result,
         );
 
         if (!mounted) return;
-
-        if (ok) {
-          Navigator.of(context).pop(true);  // HashScreen이 re-load 하게 됨
-        } else {
-          _showSnack('듀얼 생성 실패');
-        }
-
-        return;
+        Navigator.of(context).pop(true);
       }
 
       // 기본 모드
       Navigator.of(context).pop(result);
     } catch (e) {
-      _showSnack('요청 실패: $e');
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _showSnack(msg.isEmpty ? '요청 실패' : msg);
     }
   }
 
+  Future<void> _loadCurrentHb() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hb = prefs.getInt('hb_balance') ?? 0;
+
+    if (!mounted) return;
+    setState(() {
+      _currentHb = hb;
+      _hbLoading = false;
+    });
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -404,7 +418,17 @@ class _FightSettingPageState extends State<FightSettingPage> {
                     ],
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 4),
+                  if (!_hbLoading && _currentHb != null)
+                    Text(
+                        '보유 해시: $_currentHb개',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: (_currentHb! < _difficulty)
+                              ? Colors.redAccent
+                              : Colors.black54,
+                      ),
+                    ),
 
                   // 인증 방식 (표시만, 수정 불가)
                   const _SectionLabel('인증 방식'),

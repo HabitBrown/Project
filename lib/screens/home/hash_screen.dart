@@ -201,6 +201,7 @@ class _HashScreenState extends State<HashScreen> {
         return _ChallengeDetailSheet(
           info: info,
           fromUserId: info.fromUserId,
+          myHb: _currentHb,
           onAccept: (selectedHash) async {
             // 1) 바텀시트 닫기
             Navigator.of(ctx).pop();
@@ -729,12 +730,14 @@ class _ProfileCircle extends StatelessWidget {
 class _ChallengeDetailSheet extends StatefulWidget {
   final ChallengeInfo info;
   final int fromUserId;
+  final int myHb;
   final void Function(Map<String, dynamic> selectedHash) onAccept; // ✅ 선택된 습관 전달
   final VoidCallback onReject;
 
   const _ChallengeDetailSheet({
     required this.info,
     required this.fromUserId,
+    required this.myHb,
     required this.onAccept,
     required this.onReject,
   });
@@ -883,23 +886,31 @@ class _ChallengeDetailSheetState extends State<_ChallengeDetailSheet> {
                           )
                               : Column(
                             children: [
-                              for (int i = 0;
-                              i < _hashes.length;
-                              i++) ...[
-                                _ChallengeDetailRow(
-                                  title:
-                                  _hashes[i]['title'] as String,
-                                  difficulty: _hashes[i]
-                                  ['difficulty'] as int,
-                                  selected: _selectedIndex == i,
-                                  onSelect: () {
-                                    setState(() {
-                                      _selectedIndex = i;
-                                    });
-                                  },
-                                ),
-                                if (i != _hashes.length - 1)
-                                  const SizedBox(height: 6),
+                              for (int i = 0; i < _hashes.length; i++) ...[
+                                (){
+                                  final title = _hashes[i]['title'] as String;
+                                  final diff = _hashes[i]['difficulty'] as int;
+                                  final bool disabled = diff > widget.myHb;
+
+                                  return _ChallengeDetailRow(
+                                      title: title,
+                                      difficulty: diff,
+                                      disabled:disabled,
+                                      selected: !disabled && _selectedIndex == i,
+                                      onSelect: (){
+                                        if (disabled) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('보유 해시가 부족해서 선택할 수 없어요.')),
+                                          );
+                                          return;
+                                        }
+                                        setState(() {
+                                          _selectedIndex = i;
+                                        });
+                                      },
+                                    );
+                                  }(),
+                                if (i != _hashes.length - 1) const SizedBox(height: 6),
                               ],
                             ],
                           )),
@@ -985,17 +996,36 @@ class _ChallengeDetailRow extends StatelessWidget {
   final String title;
   final int difficulty;
   final bool selected;
+  final bool disabled;
   final VoidCallback onSelect;
 
   const _ChallengeDetailRow({
     required this.title,
     required this.difficulty,
     required this.selected,
+    required this.disabled,
     required this.onSelect,
   });
 
   @override
   Widget build(BuildContext context) {
+    // 비활성화일 때 색 살짝 죽이기
+    final Color titleColor = disabled ? Colors.black38 : Colors.black87;
+    final Color chipBg = disabled ? const Color(0xFFDDDDDD) : const Color(0xFFAFDBAE);
+    final Color chipTextColor = disabled ? Colors.black45 : Colors.black87;
+
+    final bool isButtonEnabled = !disabled;
+
+    final Color buttonBg = disabled
+        ? const Color(0xFFE5E5E5)
+        : (selected ? const Color(0xFFE07554) : const Color(0xFFFBE0C7));
+
+    final Color buttonBorder = disabled ? const Color(0xFFB0B0B0) : const Color(0xFFE07554);
+
+    final Color buttonTextColor = disabled
+        ? Colors.grey
+        : (selected ? Colors.white : const Color(0xFFBB3A27));
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1037,10 +1067,19 @@ class _ChallengeDetailRow extends StatelessWidget {
                       width: 13,
                       height: 13,
                       fit: BoxFit.contain,
+                      color: disabled ? Colors.grey[500]: null,
                     ),
                   ],
                 ),
               ),
+              if (disabled)
+                const Text(
+                  ' (해시 부족)',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.redAccent,
+                  ),
+                ),
             ],
           ),
         ),
@@ -1049,25 +1088,23 @@ class _ChallengeDetailRow extends StatelessWidget {
           height: 26,
           child: OutlinedButton(
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(
-                color: Color(0xFFE07554),
+              side: BorderSide(
+                color: buttonBorder,
                 width: 1.2,
               ),
-              backgroundColor: selected
-                  ? const Color(0xFFE07554)
-                  : const Color(0xFFFBE0C7),
+              backgroundColor: buttonBg,
               padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
-            onPressed: onSelect,
+            onPressed: isButtonEnabled ? onSelect : null,
             child: Text(
               '선택',
               style: TextStyle(
                 fontSize: 11,
-                color: selected ? Colors.white : const Color(0xFFBB3A27),
+                color: buttonTextColor,
               ),
             ),
           ),

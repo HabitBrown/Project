@@ -50,6 +50,21 @@ def _forfeit_duel(
 
     now_utc = datetime.now(timezone.utc)
 
+    stake = duel.difficulty
+    owner_user = db.get(User, duel.owner_user_id)
+    challenger_user = db.get(User, duel.challenger_user_id)
+    
+    if owner_user is not None and challenger_user is not None:
+        # 패배자/승자 결정
+        if loser_user_id == duel.owner_user_id:
+            winner_user = challenger_user
+        else:
+            winner_user = owner_user
+
+        # 이미 둘 다 스테이크만큼 차감된 상태에서,
+        # 승자에게 양쪽 스테이크(2배)를 지급 → 순이익 +stake
+        winner_user.hb_balance += stake * 2
+        
     # duel에 연결된 user_habits 두 개 가져오기
     duel_habits: list[UserHabit] = (
         db.query(UserHabit)
@@ -93,6 +108,26 @@ def _finish_duel_both_end(
         return
 
     now_utc = datetime.now(timezone.utc)
+    
+    stake = duel.difficulty
+    owner_user = db.get(User, duel.owner_user_id)
+    challenger_user = db.get(User, duel.challenger_user_id)
+
+    if owner_user is not None and challenger_user is not None:
+        # 1) 둘 다 성공
+        if owner_status == "completed_success" and challenger_status == "completed_success":
+            owner_user.hb_balance += stake * 2
+            challenger_user.hb_balance += stake * 2
+
+        # 2) 한쪽만 성공 (혹시 이 함수로 사용하는 경우 대비)
+        elif owner_status == "completed_success" and challenger_status == "completed_fail":
+            owner_user.hb_balance += stake * 2
+        elif owner_status == "completed_fail" and challenger_status == "completed_success":
+            challenger_user.hb_balance += stake * 2
+
+        # 3) 둘 다 실패면 아무도 돌려받지 않음
+        #    (owner_status == challenger_status == "completed_fail")
+        #    정책을 바꾸고 싶으면 여기에서 처리 추가하면 됨.
 
     duel_habits: list[UserHabit] = (
         db.query(UserHabit)
@@ -304,8 +339,29 @@ def create_duel_from_exchange(
     if not opponent_uh or opponent_uh.user_id != ex.from_user_id:
         raise HTTPException(status_code=400, detail="상대 완료 습관 정보가 올바르지 않습니다.")
 
-    # (원하면 여기서 opponent_uh.status == "completed_success" 검증도 가능)
+    # 3-1) 현재 내 해시로 이 난이도의 습관을 감당할 수 있는지 체크
+    if opponent_uh.difficulty > current_user.hb_balance:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="해시가 부족해서 이 난이도의 습관에는 도전할 수 없습니다.",
+        )
 
+    # 3-2) 두 유저의 현재 해시 잔액이 스테이크 이상인지 확인
+    stake = payload.difficulty
+    
+    owner_user = db.get(User, ex.to_user_id)
+    challenger_user = db.get(User, ex.from_user_id)
+    
+    if owner_user is None or challenger_user is None:
+        raise HTTPException(status_code=400, detail="내기 참가자 정보를 찾을 수 없습니다.")
+
+    if owner_user.hb_balance < stake:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="내 해시가 부족해서 이 난이도로 내기를 시작할 수 없습니다.",
+        )
+
+        
     # 4) 프론트에서 넘어온 값 검증/변환
     if payload.start_date > payload.end_date:
         raise HTTPException(status_code=400, detail="시작일이 종료일보다 늦을 수 없습니다.")
@@ -407,6 +463,17 @@ def create_duel_from_exchange(
 
     db.add_all([owner_duel_habit, challenger_duel_habit])
 
+    # 6-3) 내기 시작 시점에 양쪽 해시 차감
+    owner_user.hb_balance -= stake
+    
+    if owner_user.hb_balance < 0 or challenger_user.hb_balance < 0:
+        # 이론상 위에서 다 체크해서 여기 오면 음수가 될 일이 없지만
+        # 혹시 동시성 문제를 대비해 한 번 더 안전장치.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="해시 차감 중 오류가 발생했습니다.",
+        )  
+        
     # 7) 교환 요청 정리 (삭제 or 상태 변경)
     db.delete(ex)
     db.commit()

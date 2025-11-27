@@ -108,7 +108,23 @@ def create_exchange_request(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="잘못된 인증 방식입니다.",
         )
+        
+    sender = db.get(User, current_user.id)
+    # 4-1) 현재 가진 해시로 이 난이도를 감당 가능한지 체크
+    if sender is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="사용자 정보를 찾을 수 없습니다.",
+        )
 
+    if sender.hb_balance < payload.difficulty:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="해시가 부족해서 이 난이도로 내기를 걸 수 없습니다.",
+        )
+    
+    sender.hb_balance -= payload.difficulty
+    
     # 5) 같은 사람 → 같은 사람, 같은 습관, pending 중복 요청 방지
     exists = db.scalar(
         select(ExchangeRequest.id).where(
@@ -250,7 +266,7 @@ def reject_exchange_request(
     if not habit:
         raise HTTPException(status_code=404, detail="대상 습관을 찾을 수 없습니다.")
 
-    # 🔥 여기서 "만보걷기 / 영어뉴스 듣기" 같은 이름을 찾아온다.
+    # 여기서 "만보걷기 / 영어뉴스 듣기" 같은 이름을 찾아온다.
     latest_completed_uh = (
         db.query(UserHabit)
         .filter(
@@ -266,7 +282,10 @@ def reject_exchange_request(
     display_title = latest_completed_uh.title if latest_completed_uh else habit.title
 
     now = datetime.now()
-
+    stake = ex.difficulty
+    sender = db.get(User, ex.from_user_id)
+    if sender is not None:
+        sender.hb_balance += stake
 
     # 4) 송강호(= from_user) 혼자 도전용 UserHabit 생성
     solo_habit = UserHabit(
@@ -318,10 +337,14 @@ def accept_exchange_request(
     if not opponent_uh or opponent_uh.user_id != ex.from_user_id:
         raise HTTPException(status_code=400, detail="상대 완료 습관 정보가 올바르지 않습니다.")
 
-    # (선택) 성공으로 완료된 것만 허용하고 싶으면:
-    # if opponent_uh.status != "completed_success":
-    #     raise HTTPException(status_code=400, detail="완료된 습관만 선택할 수 있습니다.")
-
+    # 2-1) 현재 내 해시로 이 난이도의 습관을 감당 가능한지 체크
+    #        (받는 사람은 자기 해시 < 상대 습관 난이도 이면 선택 불가)
+    if opponent_uh.difficulty > current_user.hb_balance:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="해시가 부족해서 이 난이도의 습관에는 도전할 수 없습니다.",
+        )
+        
     owner_side_method = opponent_uh.method       # 내가 도전하는 습관 = 상대가 하던 방식
     challenger_side_method = owner_habit.method
     
@@ -333,7 +356,21 @@ def accept_exchange_request(
             )
             
     now = datetime.now()
+    stake = ex.difficulty
 
+    owner_user = db.get(User, ex.to_user_id)
+    challenger_user = db.get(User, ex.from_user_id)
+    
+    if owner_user is None or challenger_user is None:
+        raise HTTPException(status_code=400, detail="내기 참가자 정보를 찾을 수 없습니다.")
+
+    if owner_user.hb_balance < stake:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="내 해시가 부족해서 이 난이도로 내기를 시작할 수 없습니다.",
+        )
+
+            
     # 3) Duel 생성
     duel = Duel(
         owner_user_id=ex.to_user_id,
@@ -389,6 +426,8 @@ def accept_exchange_request(
 
     db.add_all([owner_duel_habit, challenger_duel_habit])
 
+    owner_user.hb_balance -= stake
+    
     # 5) 교환 요청 삭제
     db.delete(ex)
 

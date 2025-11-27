@@ -40,7 +40,7 @@ class DuelService {
         .toList();
   }
 
-  Future<bool> createDuelFromExchange({
+  Future<void> createDuelFromExchange({
     required int exchangeRequestId,
     required int opponentUserHabitId,
     required HabitSetupData setup,
@@ -69,7 +69,23 @@ class DuelService {
       body: jsonEncode(body),
     );
 
-    return res.statusCode == 200 || res.statusCode == 201;
+    if (res.statusCode != 200 && res.statusCode != 201){
+      String message = '듀얼 생성 실패';
+
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map && decoded['detail'] is String){
+          message = decoded['detail'] as String;
+        } else if (res.body.isNotEmpty) {
+          message = res.body;
+        }
+      } catch (_){
+        if (res.body.isNotEmpty){
+          message = res.body;
+        }
+      }
+      throw Exception(message);
+    }
   }
 
   Future<void> giveUpDuel(int duelId) async {

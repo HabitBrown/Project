@@ -585,19 +585,21 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: _BottomBar(
         index: _tab,
-        onChanged: (i) {
+        onChanged: (i) async {
           if (i == 0) {
             Navigator.pushNamed(
               context,
               '/potato',
               arguments: {'hbCount': _hb},
             );
+            await _syncUserFromServer();
           } else if (i == 1) {
             Navigator.pushNamed(
               context,
               '/hash',
               arguments: {'hbCount': _hb},
             );
+            await _syncUserFromServer();
           } else if (i == 3){
             Navigator.push(
                 context,

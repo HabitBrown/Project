@@ -40,7 +40,22 @@ class ExchangeService {
     );
 
     if (res.statusCode != 201) {
-      throw Exception("교환 요청 실패: ${res.body}");
+      String message = '교환 요청 실패';
+
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map && decoded['detail'] is String) {
+          message = decoded['detail'] as String;
+        } else if (res.body.isNotEmpty) {
+          message = res.body;
+        }
+      } catch (_) {
+        if (res.body.isNotEmpty) {
+          message = res.body;
+        }
+      }
+
+      throw Exception(message);
     }
   }
 
@@ -127,7 +142,22 @@ class ExchangeService {
     );
 
     if (res.statusCode != 204) {
-      throw Exception("교환 수락 실패: ${res.body}");
+      String message = '교환 수락 실패';
+
+      try {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map && decoded['detail'] is String) {
+          message = decoded['detail'] as String;
+        } else if (res.body.isNotEmpty) {
+          message = res.body;
+        }
+      } catch (_) {
+        if (res.body.isNotEmpty) {
+          message = res.body;
+        }
+      }
+
+      throw Exception(message);
     }
   }
 
