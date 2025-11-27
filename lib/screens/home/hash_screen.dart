@@ -456,7 +456,6 @@ class _HashTopBar extends StatelessWidget implements PreferredSizeWidget {
                 context,
                 MaterialPageRoute(
                     builder: (_) => ShoppingScreen(
-                      hbCount:hbCount,
                     ),
                 ),
             );

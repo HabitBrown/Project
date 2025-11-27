@@ -14,7 +14,7 @@ from app.routers import (
     user_interest,
     potato,exchange,
     certification,media,
-    duel,)
+    duel,attendance)
 
 app = FastAPI(title="Hashbrown API", version="1.0.0")
 
@@ -43,6 +43,7 @@ app.include_router(exchange.router)
 app.include_router(certification.router)
 app.include_router(media.router)
 app.include_router(duel.router)
+app.include_router(attendance.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}

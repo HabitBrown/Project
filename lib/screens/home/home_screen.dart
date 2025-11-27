@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:pbl_front/screens/daily_check.dart';
 
 // 추가: 백엔드/로컬 저장 연동
 import 'package:shared_preferences/shared_preferences.dart';
@@ -160,6 +161,18 @@ class _HomeScreenState extends State<HomeScreen> {
         widget.initialNickname!.trim().isNotEmpty) {
       nickname = widget.initialNickname!.trim();
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_){
+      showDailyCheckDialog(
+          context,
+      onHbUpdated: (newHb){
+            setState(() {
+              _hb = newHb;
+            });
+        },
+      );
+    });
+
 
     // late 리스트 초기화 (안전하게)
     _today = [];
@@ -663,9 +676,7 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
             Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => ShoppingScreen(
-                        hbCount: hb,
-                    ),
+                    builder: (_) => ShoppingScreen(),
                 ),
             );
           },

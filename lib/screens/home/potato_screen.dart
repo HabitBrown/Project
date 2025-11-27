@@ -530,7 +530,6 @@ class _PotatoTopBar extends StatelessWidget implements PreferredSizeWidget {
                 context,
                 MaterialPageRoute(
                     builder:  (_) => ShoppingScreen(
-                      hbCount: hbCount,
                     ),
                 ),
             );
