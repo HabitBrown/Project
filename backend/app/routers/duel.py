@@ -10,6 +10,7 @@ from app.database import get_db
 from app.routers.register import get_current_user
 from app.routers.certification import auto_fail_overdue_habits_for_today
 
+from app.models.notification import Notification
 from app.models.duel import Duel
 from app.models.user import User
 from app.models.exchange import ExchangeRequest
@@ -26,7 +27,31 @@ FAIL_LIMIT = 3
 
 router = APIRouter(prefix="/duels", tags=["duels"])
 
-
+def _create_notification(
+    db: Session,
+    user_id: int,
+    noti_type: str,
+    title: str,
+    body: str = "",
+    deeplink: str | None = None,
+):
+    """
+    공통 알림 생성 헬퍼.
+    - noti_type: "challenge", "challenge_rejected", "challenge_accepted", "system" 등 문자열 정책은 자유.
+    """
+    now = datetime.now(timezone.utc)
+    n = Notification(
+        user_id=user_id,
+        type=noti_type,
+        title=title,
+        body=body,
+        is_read=False,
+        deeplink=deeplink,
+        created_at = now,
+    )
+    db.add(n)
+    # commit 은 보통 기존 로직과 함께 한 번에
+    
 def _encode_days_of_week(weekdays: List[int]) -> int:
     mask = 0
     for d in weekdays:
@@ -90,7 +115,44 @@ def _forfeit_duel(
         duel.result = "forfeit_owner"
     else:
         duel.result = "forfeit_challenger"
+        
+    owner_user = db.get(User, duel.owner_user_id)
+    challenger_user = db.get(User, duel.challenger_user_id)
+    
+    # 둘 다 유효한 유저일 때만 알림 생성
+    if owner_user is None or challenger_user is None:
+        return
 
+    # loser / winner 객체 구분
+    if loser_user_id == owner_user.id:
+        loser = owner_user
+        winner = challenger_user
+        
+    else:
+        loser = challenger_user
+        winner = owner_user 
+    
+    duel_title = duel.habit_title
+
+    # 1) 패배한 사람 알림
+    _create_notification(
+        db=db,
+        user_id=loser.id,
+        noti_type="cert_fail",   # → pushType "certification"
+        title="듀얼이 패배로 종료되었어요.",
+        body=duel_title,
+        deeplink=f"/duels/{duel.id}",
+    )
+    # 2) 승리한 사람 알림
+    _create_notification(
+        db=db,
+        user_id=winner.id,
+        noti_type="cert_success",  # → pushType "certification"
+        title="상대 농부가 패배해서 듀얼이 종료되었어요.",
+        body=duel_title,
+        deeplink=f"/duels/{duel.id}",
+    )
+    
 def _finish_duel_both_end(
     db: Session,
     duel: Duel,
@@ -150,6 +212,42 @@ def _finish_duel_both_end(
 
     duel.status = "finished"
     duel.result = result
+    duel.end_date = now_utc
+    
+    if owner_status == "completed_success" and challenger_status == "completed_success":
+        duel_title = duel.habit_title
+        deeplink = f"/duels/{duel.id}"
+        
+        if owner_user and challenger_user:
+            owner_title = f"{challenger_user.nickname or challenger_user.name} 농부와 듀얼을 완주했어요."
+            challenger_title = f"{owner_user.nickname or owner_user.name} 농부와 듀얼을 완주했어요."
+        else:
+            # 혹시 유저가 None일 경우 대비
+            owner_title = "듀얼 습관을 함께 완주했어요."
+            challenger_title = "듀얼 습관을 함께 완주했어요."
+
+        # owner 쪽 알림
+        if owner_user:
+            _create_notification(
+                db=db,
+                user_id=owner_user.id,
+                noti_type="cert_success",   # → pushType: "certification"
+                title=owner_title,
+                body=duel_title,            # 액션(주황 텍스트)에는 듀얼 제목
+                deeplink=deeplink,
+            )
+
+        # challenger 쪽 알림
+        if challenger_user:
+            _create_notification(
+                db=db,
+                user_id=challenger_user.id,
+                noti_type="cert_success",
+                title=challenger_title,
+                body=duel_title,
+                deeplink=deeplink,
+            )
+        
 
 def _check_and_finish_duel_by_rules(
     db: Session,
@@ -248,7 +346,6 @@ def give_up_duel(
     db.commit()
 
     return {"detail": "듀얼을 포기하였습니다."}
-
 
 @router.get("/active", response_model=List[ActiveDuelItem])
 def get_active_duels(
@@ -421,6 +518,32 @@ def create_duel_from_exchange(
     db.add(duel)
     db.flush()  # duel.id 확보
 
+    owner_user = db.get(User, ex.to_user_id)       # 도전 받은 사람
+    challenger_user = db.get(User, ex.from_user_id)# 도전 건 사람
+
+    duel_title = duel.habit_title                  # "내 습관 vs 너 습관" 형식
+    deeplink = f"/duels/{duel.id}"
+
+    # 1) 도전 받은 사람에게: "OOO 농부와 내기가 성립되었어요."
+    _create_notification(
+        db=db,
+        user_id=owner_user.id,
+        noti_type="challenge_accepted",
+        title=f"{challenger_user.nickname or challenger_user.name} 농부와 내기가 시작되었어요.",
+        body=duel_title,
+        deeplink=deeplink,
+    )
+
+    # 2) 도전 건 사람에게도 같은 취지 알림
+    _create_notification(
+        db=db,
+        user_id=challenger_user.id,
+        noti_type="challenge_accepted",
+        title=f"{owner_user.nickname or owner_user.name} 농부와 내기가 시작되었어요.",
+        body=duel_title,
+        deeplink=deeplink,
+    )
+    
     # ---------------------------------------------------
     # 6) Duel용 UserHabit 두 개 생성 (여기가 핵심)
     # ---------------------------------------------------

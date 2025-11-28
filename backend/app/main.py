@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from app.scheduler import start_scheduler
 
 from app.routers import (
     register,auth,
@@ -14,9 +15,11 @@ from app.routers import (
     user_interest,
     potato,exchange,
     certification,media,
-    duel,attendance)
+    duel,attendance,
+    notification)
 
 app = FastAPI(title="Hashbrown API", version="1.0.0")
+start_scheduler()
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +47,7 @@ app.include_router(certification.router)
 app.include_router(media.router)
 app.include_router(duel.router)
 app.include_router(attendance.router)
+app.include_router(notification.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}

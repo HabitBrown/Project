@@ -1136,7 +1136,6 @@ class _HashFightPageState extends State<HashFightPage> {
                         etcContent: _etcController.text.trim(),
                       );
 
-                      // TODO: payload 백엔드로 전송
 
                       setState(() {
                         _showObjection = false;

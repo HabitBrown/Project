@@ -20,3 +20,6 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
 exceptiongroup==1.3.0
 idna==3.10
+apscheduler==3.11.1
+tzdata==2025.2 
+tzlocal==5.3.1

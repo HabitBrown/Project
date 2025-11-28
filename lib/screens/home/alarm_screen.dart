@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 // ✅ 홈 색/이미지/홈스크린은 home_screen.dart 에서 가져오기
 import 'package:pbl_front/screens/home/home_screen.dart'
     show AppColors, AppImages, HomeScreen;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/base_url.dart';
+import '../../services/auth_service.dart';
 
 /// =======================
 ///  알림 데이터 모델
@@ -41,39 +46,62 @@ class AlarmItem {
   factory AlarmItem.fromPush(Map<String, dynamic> json) {
     final String pushType = (json['pushType'] as String?) ?? 'etc';
     final String? senderName = json['senderName'] as String?;
-    final String? title = json['title'] as String?;
+    final String? rawTitle = json['title'] as String?;
     final String? action = json['action'] as String?;
     final String? dateText = json['dateText'] as String?;
 
-    // 4번 요구사항 때문에: etc면 무조건 시스템 업데이트 알림으로 고정
+    // ============================
+    // 1) 기타 알림 (etc)
+    //    - 지금은 시스템 알림 용도로 사용
+    //    - 서버에서 title / dateText 내려주면 우선 사용
+    // ============================
     if (pushType == 'etc') {
-      return const AlarmItem(
+      return AlarmItem(
         type: AlarmIconType.megaphone,
         alarmType: AlarmType.etc,
-        title: '시스템 업데이트가 되었어요.',
+        title: rawTitle ?? '시스템 업데이트가 되었어요.',
         subText: null,
-        action: null,
-        dateText: '2025. 11. 19', // 나중에 서버 값 쓰고 싶으면 바꾸면 됨
+        action: action,
+        dateText: dateText ?? '2025. 11. 19',
       );
     }
+
+    // ============================
+    // 2) 도전장 / 도전 관련 알림 (challenge)
+    //    - senderName 이 있으면: 푸시 템플릿 문장 사용
+    //    - 없으면: 서버에서 준 title 그대로 사용
+    // ============================
     if (pushType == 'challenge') {
-      // challenge 타입 → 도전장 도착 알림
+      final String displayTitle;
+      if (senderName != null && senderName.isNotEmpty){
+        // FCM 푸시에서 바로 들어오는 케이스 (senderName 포함)
+        displayTitle = '$senderName 농부가 도전장을 보냈습니다.';
+      } else {
+        // /notifications 조회처럼 senderName 없는 케이스
+        // → DB에 저장된 title (예: "훈이 농부가 도전장을 거절했어요.") 그대로 사용
+        displayTitle = rawTitle ?? '도전장 알림이 도착했어요.';
+      }
       return AlarmItem(
         alarmType: AlarmType.challenge,
         type: AlarmIconType.profile,
-        title: '${senderName ?? "누군가"} 농부가 도전장을 보냈습니다.',
-        subText: dateText,
-        action: title ?? action,
+        title: displayTitle,
+        subText: null,
+        action: action ?? '',
         dateText: dateText,
       );
     }
 
+    // ============================
+    // 3) 인증 관련 알림 (certification)
+    //    - 서버 title 이 있으면 그대로 사용
+    //    - 없으면 기본 문장
+    // ============================
     if (pushType == 'certification') {
       // certification 타입 → 인증 실패 알림
       return AlarmItem(
         alarmType: AlarmType.certification,
         type: AlarmIconType.megaphone,
-        title: '${title ?? ''} 내기 마감 시간 10분 전입니다.',
+        title: rawTitle ?? '인증 관련 알림이 도착했어요.',
         subText: null,
         action: action,
         dateText: dateText,
@@ -81,13 +109,13 @@ class AlarmItem {
     }
 
     // 혹시 이상한 타입 오면 안전하게 etc 처리
-    return const AlarmItem(
+    return AlarmItem(
       type: AlarmIconType.megaphone,
       alarmType: AlarmType.etc,
-      title: '시스템 알림이 도착했어요.',
+      title: rawTitle ?? '시스템 알림이 도착했어요.',
       subText: null,
-      action: null,
-      dateText: null,
+      action: action,
+      dateText: dateText,
     );
   }
 }
@@ -100,41 +128,41 @@ class AlarmItem {
 
 
 
-/// 더미 알림 기본 데이터 (초기 화면용)
-const List<AlarmItem> dummyAlarms = [
-  AlarmItem(
-    type: AlarmIconType.profile,
-    alarmType: AlarmType.challenge,
-    title: '이연제 농부가 도전장을 보냈습니다.',
-    action: '하루에 한잔 물마시기',
-  ),
-  AlarmItem(
-    type: AlarmIconType.megaphone,
-    alarmType: AlarmType.etc,
-    title: '시스템 업데이트가 되었어요.',
-    dateText: '2025. 11. 19',
-  ),
-  AlarmItem(
-    type: AlarmIconType.profile,
-    alarmType: AlarmType.challenge,
-    title: '숨준 농부가 도전장을 수락했어요.',
-    action: '하루 10000원만 쓰기',
-  ),
-  AlarmItem(
-    type: AlarmIconType.megaphone,
-    alarmType: AlarmType.certification,
-    title: '내기 알림을 실패했어요.',
-    action: '코딩테스트하기',
-  ),
-];
+// /// 더미 알림 기본 데이터 (초기 화면용)
+// const List<AlarmItem> dummyAlarms = [
+//   AlarmItem(
+//     type: AlarmIconType.profile,
+//     alarmType: AlarmType.challenge,
+//     title: '이연제 농부가 도전장을 보냈습니다.',
+//     action: '하루에 한잔 물마시기',
+//   ),
+//   AlarmItem(
+//     type: AlarmIconType.megaphone,
+//     alarmType: AlarmType.etc,
+//     title: '시스템 업데이트가 되었어요.',
+//     dateText: '2025. 11. 19',
+//   ),
+//   AlarmItem(
+//     type: AlarmIconType.profile,
+//     alarmType: AlarmType.challenge,
+//     title: '숨준 농부가 도전장을 수락했어요.',
+//     action: '하루 10000원만 쓰기',
+//   ),
+//   AlarmItem(
+//     type: AlarmIconType.megaphone,
+//     alarmType: AlarmType.certification,
+//     title: '내기 알림을 실패했어요.',
+//     action: '코딩테스트하기',
+//   ),
+// ];
 
 /// etc 타입에서 재사용할 "시스템 업데이트" 알람 템플릿
-const AlarmItem systemUpdateAlarmTemplate = AlarmItem(
-  type: AlarmIconType.megaphone,
-  alarmType: AlarmType.etc,
-  title: '시스템 업데이트가 되었어요.',
-  dateText: '2025. 11. 19',
-);
+// const AlarmItem systemUpdateAlarmTemplate = AlarmItem(
+//   type: AlarmIconType.megaphone,
+//   alarmType: AlarmType.etc,
+//   title: '시스템 업데이트가 되었어요.',
+//   dateText: '2025. 11. 19',
+// );
 
 /// =======================
 ///  알림 화면
@@ -149,9 +177,9 @@ class AlarmScreen extends StatefulWidget {
 
 class _AlarmScreenState extends State<AlarmScreen> {
   /// 화면에 실제로 보여줄 알림 리스트
-  /// 초기에는 더미 데이터로 채워두고,
-  /// 나중에 백엔드/푸시 알림이 오면 여기에 추가
-  final List<AlarmItem> _alarms = List.of(dummyAlarms);
+  List<AlarmItem> _alarms = [];
+  bool _isLoading = false;
+
   void handlePushFromBackend(Map<String, dynamic> data) {
     final AlarmItem newItem = AlarmItem.fromPush(data);
 
@@ -161,7 +189,59 @@ class _AlarmScreenState extends State<AlarmScreen> {
     });
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
 
+  Future<void> _loadNotifications() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final uri = Uri.parse('$kBaseUrl/notifications');
+
+      final prefs = await SharedPreferences.getInstance();
+      final accessToken = prefs.getString('access_token');
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          if (accessToken != null) 'Authorization': 'Bearer $accessToken',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data =
+        jsonDecode(response.body) as Map<String, dynamic>;
+        final List<dynamic> items = data['items'] as List<dynamic>? ?? [];
+
+        final alarms = items
+            .map(
+              (e) => AlarmItem.fromPush(e as Map<String, dynamic>),
+        )
+            .toList();
+
+        setState(() {
+          _alarms = alarms;
+        });
+      } else {
+        debugPrint(
+            '알림 조회 실패: ${response.statusCode} ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('알림 조회 중 에러: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
   /// ==========================
   ///  알림 클릭 시 동작 정의
   /// ==========================
@@ -181,7 +261,7 @@ class _AlarmScreenState extends State<AlarmScreen> {
 
   /// 1) 도전장 알림 클릭 시 실행할 함수
   void _onChallengeAlarmTap(AlarmItem item) {
-    Navigator.pushNamed(context, '/potato');
+    Navigator.pushNamed(context, '/hash');
     debugPrint('챌린지 알림 클릭: ${item.title} / ${item.action}');
   }
 
@@ -220,22 +300,31 @@ class _AlarmScreenState extends State<AlarmScreen> {
                   Expanded(
                     child: Container(
                       color: Colors.white, // 리스트 아래 빈 공간도 흰색으로
-                      child: ListView.separated(
-                        itemCount: _alarms.length,
-                        separatorBuilder: (_, __) => const Divider(
-                          height: 1,
-                          color: AppColors.divider,
+                      child: _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : _alarms.isEmpty
+                            ? const Center(
+                        child: Text(
+                          '아직 알람이 없어요.',
+                          style: TextStyle(fontSize: 14),
+                          ),
+                        )
+                            : ListView.separated(
+                              itemCount: _alarms.length,
+                              separatorBuilder: (_, __) => const Divider(
+                              height: 1,
+                              color: AppColors.divider,
+                              ),
+                              itemBuilder: (context, index) {
+                                final item = _alarms[index];
+                                return _AlarmRow(
+                                  item: item,
+                                  onTap: () => _onAlarmTap(item),
+                                );
+                              },
+                            ),
                         ),
-                        itemBuilder: (context, index) {
-                          final item = _alarms[index];
-                          return _AlarmRow(
-                            item: item,
-                            onTap: () => _onAlarmTap(item),
-                          );
-                        },
-                      ),
                     ),
-                  ),
                 ],
               ),
             ),

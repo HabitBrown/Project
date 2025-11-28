@@ -8,6 +8,8 @@ from app.database import SessionLocal
 from app.models.user import User
 from app.models.user_habit import UserHabit
 from app.models.certification import Certification
+from app.models.notification import Notification
+
 from app.schemas.certification import CertificationCreateIn, CertificationOut
 from app.routers.register import get_current_user
 
@@ -93,6 +95,108 @@ def auto_fail_overdue_habits_for_today(
     # 필요하면 refresh
     for c in created:
         db.refresh(c)
+
+    return created
+
+def create_deadline_reminders_10min_before(
+    db: Session,
+    user: User,
+) -> list[Notification]:
+    """
+    - 오늘 요일에 해당되는 UserHabit 중에서
+    - deadline_local 이 있는 습관들 중
+    - '마감 10분 전 ~ 마감 전' 구간에 들어온 습관에 대해
+      하루에 한 번씩만 리마인더 알림(Notification.type='system') 생성.
+    """
+    now_kst = datetime.now(KST)
+    today: date = now_kst.date()
+    weekday = now_kst.isoweekday()  # 1=월 ... 7=일
+
+    # 오늘 0시(KST) → UTC로 변환해서, "오늘 리마인더 이미 보냈는지" 체크에 사용
+    today_start_kst = datetime(today.year, today.month, today.day, tzinfo=KST)
+    today_start_utc = today_start_kst.astimezone(timezone.utc)
+
+    created: list[Notification] = []
+
+    # 1) 오늘 이미 cert 있는 습관들 (success/fail 상관없이) 서브쿼리
+    existing_subq = (
+        db.query(Certification.user_habit_id)
+        .filter(
+            Certification.user_id == user.id,
+            Certification.cert_date == today,
+        )
+        .subquery()
+    )
+
+    # 2) 오늘 요일에 해당되는, 내 active 습관들만 조회
+    habits = (
+        db.query(UserHabit)
+        .filter(
+            UserHabit.user_id == user.id,
+            UserHabit.is_active == True,                               # noqa: E712
+            (UserHabit.days_of_week.op("&")(1 << weekday) != 0),
+            ~UserHabit.id.in_(existing_subq),                          # 오늘 이미 cert 있는 습관 제외
+            UserHabit.deadline_local.isnot(None),                      # 마감시간 있는 습관만
+        )
+        .all()
+    )
+
+    if not habits:
+        return []
+
+    now_utc = now_kst.astimezone(timezone.utc)
+
+    for h in habits:
+        # deadline_local: time 컬럼
+        if h.deadline_local is None:
+            continue
+
+        # 오늘 날짜 + deadline_local → 오늘 마감 시각 (KST)
+        deadline_kst = datetime.combine(today, h.deadline_local, tzinfo=KST)
+
+        # 아직 오늘 마감시간이 아예 지나버린 경우 → 리마인더 의미 없음
+        if now_kst >= deadline_kst:
+            continue
+
+        # "마감 10분 전" 구간 계산
+        reminder_start_kst = deadline_kst - timedelta(minutes=10)
+
+        # 지금 시간이 [마감 10분 전, 마감) 구간에 없으면 스킵
+        if not (reminder_start_kst <= now_kst < deadline_kst):
+            continue
+
+        # 오늘 이미 이 습관에 대한 리마인더 알림을 보냈는지 체크
+        deeplink = f"/habits/{h.id}/deadline-reminder"
+        already = (
+            db.query(Notification)
+            .filter(
+                Notification.user_id == user.id,
+                Notification.type == "system",
+                Notification.deeplink == deeplink,
+                Notification.created_at >= today_start_utc,
+            )
+            .first()
+        )
+        if already:
+            continue
+
+        #리마인더 알림 생성
+        noti = Notification(
+            user_id=user.id,
+            type="system",                              # pushType: "etc"
+            title="습관 인증 마감 10분 전이에요.",
+            body=h.title or "",                         # 주황 강조 텍스트용
+            deeplink=deeplink,
+            is_read=False,
+            created_at=now_utc,
+        )
+        db.add(noti)
+        created.append(noti)
+
+    db.commit()
+
+    for n in created:
+        db.refresh(n)
 
     return created
 

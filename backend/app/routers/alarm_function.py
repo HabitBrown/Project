@@ -1,6 +1,6 @@
 # Backend app router
-from backend.app.models.duel import Duel
-from backend.app.models.user import User
+from app.models.duel import Duel
+from app.models.user import User
 
 # Datetime
 from datetime import date

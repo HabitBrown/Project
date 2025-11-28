@@ -416,6 +416,7 @@ class _PotatoScreenState extends State<PotatoScreen> {
                             hashes: data.hashes,
                             avatarPath: data.avatarUrl,
                             isFollowing: data.isFollowing,
+                            myHb: _hb,
                             onFollow: () => _handleFollow(data),
                             onUnfollow: () => _handleUnfollow(data),
                             onExchangeHash: (hash) => _openFightSetting(hash),
@@ -780,6 +781,7 @@ class _FarmerCard extends StatelessWidget {
     required this.onUnfollow,
     required this.onFollow,
     required this.onExchangeHash,
+    required this.myHb
   });
 
   final String name;
@@ -791,6 +793,7 @@ class _FarmerCard extends StatelessWidget {
   final VoidCallback onFollow;
   final VoidCallback onUnfollow;
   final void Function(HashSummary hash) onExchangeHash;
+  final int myHb;
 
   @override
   Widget build(BuildContext context) {
@@ -857,6 +860,7 @@ class _FarmerCard extends StatelessWidget {
         const SizedBox(height: 16),
         _MadeHashBrownBox(
           hashes: hashes,
+          myHb: myHb,
           onExchangeHash: onExchangeHash,
         ),
       ],
@@ -868,10 +872,12 @@ class _MadeHashBrownBox extends StatelessWidget {
 
   const _MadeHashBrownBox({
     required this.hashes,
+    required this.myHb,
     this.onExchangeHash,
   });
 
   final List<HashSummary> hashes;
+  final int myHb;
   final void Function(HashSummary hash)? onExchangeHash;
 
   @override
@@ -894,6 +900,7 @@ class _MadeHashBrownBox extends StatelessWidget {
                   _MadeHashRow(
                     title: h.title,
                     difficulty: h.difficulty,
+                    disabled: h.difficulty > myHb,
                     onExchange: () => onExchangeHash?.call(h),
                   ),
               ],
@@ -930,14 +937,29 @@ class _MadeHashRow extends StatelessWidget {
     required this.title,
     required this.difficulty,
     required this.onExchange,
+    required this.disabled,
   });
 
   final String title;
   final int difficulty;
   final VoidCallback onExchange;
+  final bool disabled;
 
   @override
   Widget build(BuildContext context) {
+    final Color titleColor =
+    disabled ? Colors.black38 : Colors.black87;
+    final Color chipBg =
+    disabled ? const Color(0xFFDDDDDD) : const Color(0xFFAFDBAE);
+    final Color chipTextColor =
+    disabled ? Colors.black45 : Colors.black87;
+
+    final Color buttonBg = disabled
+        ? const Color(0xFFE5E5E5)
+        : const Color(0xFF9A9C06);
+    final Color buttonTextColor =
+    disabled ? Colors.grey[700]! : Colors.white;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
@@ -960,10 +982,10 @@ class _MadeHashRow extends StatelessWidget {
                   child: Text(
                     title,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w400, // 더 얇게
-                      color: Colors.black87,
+                      color: titleColor,
                     ),
                   ),
                 ),
@@ -972,7 +994,7 @@ class _MadeHashRow extends StatelessWidget {
                   padding:
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFAFDBAE),
+                    color: chipBg,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
@@ -980,10 +1002,10 @@ class _MadeHashRow extends StatelessWidget {
                     children: [
                       Text(
                         '난이도: $difficulty',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10, // 더 작게
                           fontWeight: FontWeight.w400,
-                          color: Colors.black87,
+                          color: chipTextColor,
                         ),
                       ),
                       const SizedBox(width: 3),
@@ -992,10 +1014,22 @@ class _MadeHashRow extends StatelessWidget {
                         width: 14,
                         height: 14,
                         fit: BoxFit.contain,
+                        color: disabled ? Colors.grey[500] : null,
                       ),
                     ],
                   ),
                 ),
+                if(disabled)
+                  const Padding(
+                      padding: EdgeInsets.only(left: 4),
+                      child: Text(
+                          '해시 부족',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.redAccent,
+                          ),
+                      ),
+                  )
               ],
             ),
           ),
@@ -1007,8 +1041,8 @@ class _MadeHashRow extends StatelessWidget {
             height: 28,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF9A9C06),
-                foregroundColor: Colors.white,
+                backgroundColor: buttonBg,
+                foregroundColor: buttonTextColor,
                 elevation: 0,
                 padding:
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1016,7 +1050,17 @@ class _MadeHashRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              onPressed: onExchange,
+              onPressed: (){
+                if(disabled) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content : Text('보유 해시가 부족해서 교환할 수 없어요.'),
+                      ),
+                    );
+                  return;
+                }
+                onExchange();
+              },
               child: const Text(
                 '교환하기',
                 style: TextStyle(fontSize: 11),

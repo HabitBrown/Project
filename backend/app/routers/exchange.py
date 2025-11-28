@@ -1,6 +1,6 @@
 # app/routers/exchange.py
 
-from datetime import datetime
+from datetime import datetime,timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,6 +13,8 @@ from app.models.habit import Habit
 from app.models.duel import Duel
 from app.models.user_habit import UserHabit
 from app.models.exchange import ExchangeRequest
+from app.models.notification import Notification
+
 from app.schemas.exchange import (
     ExchangeRequestCreate, 
     ExchangeRequestOut,
@@ -21,6 +23,7 @@ from app.schemas.exchange import (
     ReceivedTargetHabit,
     ExchangeAcceptIn
     )
+
 from app.routers.register import get_current_user  # 실제 경로에 맞게 수정
 
 router = APIRouter(
@@ -40,7 +43,31 @@ def _encode_days_of_week(weekdays: List[int]) -> int:
             mask |= (1 << (d - 1))
     return mask
 
-
+def _create_notification(
+    db: Session,
+    user_id: int,
+    noti_type: str,
+    title: str,
+    body: str = "",
+    deeplink: str | None = None,
+):
+    """
+    공통 알림 생성 헬퍼.
+    - noti_type: "challenge", "challenge_rejected", "challenge_accepted", "system" 등 문자열 정책은 자유.
+    """
+    now = datetime.now(timezone.utc)
+    
+    n = Notification(
+        user_id=user_id,
+        type=noti_type,
+        title=title,
+        body=body,
+        is_read=False,
+        deeplink=deeplink,
+        created_at=now,
+    )
+    db.add(n)
+    
 @router.post(
     "",
     response_model=ExchangeRequestOut,
@@ -161,6 +188,20 @@ def create_exchange_request(
     db.add(req)
     db.commit()
     db.refresh(req)
+    
+    sender = db.get(User, current_user.id)
+    habit_title = habit.title
+    
+    _create_notification(
+        db=db,
+        user_id=to_user_id,
+        noti_type="challenge",
+        title=f"{sender.nickname or sender.name} 농부가 도전장을 보냈어요.",
+        body=habit_title,
+        deeplink=f"/exchange-requests/received",
+    )
+    
+    db.commit()
 
     return req
 
@@ -308,129 +349,166 @@ def reject_exchange_request(
     # 5) 교환 요청은 아예 삭제
     db.delete(ex)
 
+    rejector = db.get(User, current_user.id)
+    habit_title = display_title
+    
+    _create_notification(
+        db=db,
+        user_id=ex.from_user_id,               # 도전장을 보낸 사람
+        noti_type="challenge_rejected",
+        title=f"{rejector.nickname or rejector.name} 농부가 도전장을 거절했어요.",
+        body=habit_title,
+        deeplink="/exchange-requests/sent",    # 보낸 사람이 보는 화면 (원하면 바꿔)
+    )
+
     db.commit()
     return
 
-@router.post("/{request_id}/accept", status_code=status.HTTP_204_NO_CONTENT)
-def accept_exchange_request(
-    request_id: int,
-    body: ExchangeAcceptIn,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    ex = db.get(ExchangeRequest, request_id)
-    if not ex:
-        raise HTTPException(status_code=404, detail="교환 요청을 찾을 수 없습니다.")
+# @router.post("/{request_id}/accept", status_code=status.HTTP_204_NO_CONTENT)
+# def accept_exchange_request(
+#     request_id: int,
+#     body: ExchangeAcceptIn,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+# ):
+#     ex = db.get(ExchangeRequest, request_id)
+#     if not ex:
+#         raise HTTPException(status_code=404, detail="교환 요청을 찾을 수 없습니다.")
 
-    if ex.to_user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="이 교환 요청에 대한 권한이 없습니다.")
-    if ex.status != "pending":
-        raise HTTPException(status_code=400, detail="이미 처리된 교환 요청입니다.")
+#     if ex.to_user_id != current_user.id:
+#         raise HTTPException(status_code=403, detail="이 교환 요청에 대한 권한이 없습니다.")
+#     if ex.status != "pending":
+#         raise HTTPException(status_code=400, detail="이미 처리된 교환 요청입니다.")
 
-    # 1) 내 원본 습관 확인 (exchange.target_habit_id 는 Habit 기준)
-    owner_habit = db.get(Habit, ex.target_habit_id)
-    if not owner_habit:
-        raise HTTPException(status_code=404, detail="대상 습관을 찾을 수 없습니다.")
+#     # 1) 내 원본 습관 확인 (exchange.target_habit_id 는 Habit 기준)
+#     owner_habit = db.get(Habit, ex.target_habit_id)
+#     if not owner_habit:
+#         raise HTTPException(status_code=404, detail="대상 습관을 찾을 수 없습니다.")
 
-    # 2) 상대가 예전에 완료했던 UserHabit (바텀시트에서 선택한 것)
-    opponent_uh = db.get(UserHabit, body.opponent_user_habit_id)
-    if not opponent_uh or opponent_uh.user_id != ex.from_user_id:
-        raise HTTPException(status_code=400, detail="상대 완료 습관 정보가 올바르지 않습니다.")
+#     # 2) 상대가 예전에 완료했던 UserHabit (바텀시트에서 선택한 것)
+#     opponent_uh = db.get(UserHabit, body.opponent_user_habit_id)
+#     if not opponent_uh or opponent_uh.user_id != ex.from_user_id:
+#         raise HTTPException(status_code=400, detail="상대 완료 습관 정보가 올바르지 않습니다.")
 
-    # 2-1) 현재 내 해시로 이 난이도의 습관을 감당 가능한지 체크
-    #        (받는 사람은 자기 해시 < 상대 습관 난이도 이면 선택 불가)
-    if opponent_uh.difficulty > current_user.hb_balance:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="해시가 부족해서 이 난이도의 습관에는 도전할 수 없습니다.",
-        )
+#     # 2-1) 현재 내 해시로 이 난이도의 습관을 감당 가능한지 체크
+#     #        (받는 사람은 자기 해시 < 상대 습관 난이도 이면 선택 불가)
+#     if opponent_uh.difficulty > current_user.hb_balance:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="해시가 부족해서 이 난이도의 습관에는 도전할 수 없습니다.",
+#         )
         
-    owner_side_method = opponent_uh.method       # 내가 도전하는 습관 = 상대가 하던 방식
-    challenger_side_method = owner_habit.method
+#     owner_side_method = opponent_uh.method       # 내가 도전하는 습관 = 상대가 하던 방식
+#     challenger_side_method = owner_habit.method
     
-    for m in (owner_side_method, challenger_side_method):
-        if m not in ("photo", "text"):
-            raise HTTPException(
-                status_code=400,
-                detail="교환에 사용할 수 없는 인증 방식입니다.",
-            )
+#     for m in (owner_side_method, challenger_side_method):
+#         if m not in ("photo", "text"):
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail="교환에 사용할 수 없는 인증 방식입니다.",
+#             )
             
-    now = datetime.now()
-    stake = ex.difficulty
+#     now = datetime.now()
+#     stake = ex.difficulty
 
-    owner_user = db.get(User, ex.to_user_id)
-    challenger_user = db.get(User, ex.from_user_id)
+#     owner_user = db.get(User, ex.to_user_id)
+#     challenger_user = db.get(User, ex.from_user_id)
     
-    if owner_user is None or challenger_user is None:
-        raise HTTPException(status_code=400, detail="내기 참가자 정보를 찾을 수 없습니다.")
+#     if owner_user is None or challenger_user is None:
+#         raise HTTPException(status_code=400, detail="내기 참가자 정보를 찾을 수 없습니다.")
 
-    if owner_user.hb_balance < stake:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="내 해시가 부족해서 이 난이도로 내기를 시작할 수 없습니다.",
-        )
+#     if owner_user.hb_balance < stake:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="내 해시가 부족해서 이 난이도로 내기를 시작할 수 없습니다.",
+#         )
 
             
-    # 3) Duel 생성
-    duel = Duel(
-        owner_user_id=ex.to_user_id,
-        challenger_user_id=ex.from_user_id,
-        habit_title=f"{owner_habit.title} vs {opponent_uh.title}",     # 카드에 보여줄 제목을 일단 상대 습관 제목으로 사용
-        method=ex.method,                   # photo/text
-        deadline_local=ex.deadline_local,
-        days_of_week=ex.days_of_week,
-        start_date=ex.start_date,
-        end_date=ex.end_date,
-        difficulty=ex.difficulty,
-        status="active",
-        created_at=now,
-    )
-    db.add(duel)
-    db.flush()  # duel.id 확보
+#     # 3) Duel 생성
+#     duel = Duel(
+#         owner_user_id=ex.to_user_id,
+#         challenger_user_id=ex.from_user_id,
+#         habit_title=f"{owner_habit.title} vs {opponent_uh.title}",     # 카드에 보여줄 제목을 일단 상대 습관 제목으로 사용
+#         method=ex.method,                   # photo/text
+#         deadline_local=ex.deadline_local,
+#         days_of_week=ex.days_of_week,
+#         start_date=ex.start_date,
+#         end_date=ex.end_date,
+#         difficulty=ex.difficulty,
+#         status="active",
+#         created_at=now,
+#     )
+#     db.add(duel)
+#     db.flush()  # duel.id 확보
 
-    # 4) Duel용 UserHabit 두 개 생성
+#     owner_user = db.get(User, ex.to_user_id)       # 도전 받은 사람
+#     challenger_user = db.get(User, ex.from_user_id)# 도전 건 사람
 
-    # 4-1) 나(도전 받은 사람)는 상대 완료 습관(opponent_uh)에 도전
-    owner_duel_habit = UserHabit(
-        user_id=ex.to_user_id,                
-        source_habit_id=opponent_uh.source_habit_id,
-        title=opponent_uh.title,
-        method=opponent_uh.method,
-        deadline_local=ex.deadline_local,
-        days_of_week=ex.days_of_week,
-        period_start=ex.start_date,
-        period_end=ex.end_date,
-        is_active=True,
-        created_at=now,
-        difficulty=ex.difficulty,
-        status="active",
-        duel_id=duel.id,
-    )
+#     duel_title = duel.habit_title 
+#     deeplink = f"/duels/{duel.id}"
 
-    # 4-2) 상대(도전 건 사람)는 내 원본(owner_habit)에 도전
-    challenger_duel_habit = UserHabit(
-        user_id=ex.from_user_id,          # 송강호
-        source_habit_id=owner_habit.id,   # 코테
-        title=owner_habit.title,
-        method=owner_habit.method,
-        deadline_local=ex.deadline_local,
-        days_of_week=ex.days_of_week,
-        period_start=ex.start_date,
-        period_end=ex.end_date,
-        is_active=True,
-        created_at=now,
-        difficulty=ex.difficulty,
-        status="active",
-        duel_id=duel.id,
-    )
-
-    db.add_all([owner_duel_habit, challenger_duel_habit])
-
-    owner_user.hb_balance -= stake
+#     # 1) 도전 받은 사람에게: "OOO 농부와 내기가 성립되었어요."
+#     _create_notification(
+#         db=db,
+#         user_id=owner_user.id,
+#         noti_type="challenge_accepted",
+#         title=f"{challenger_user.nickname or challenger_user.name} 농부와 내기가 시작되었어요.",
+#         body=duel_title,
+#         deeplink=deeplink,
+#     )
     
-    # 5) 교환 요청 삭제
-    db.delete(ex)
+#     # 2) 도전 건 사람에게도 같은 취지 알림
+#     _create_notification(
+#         db=db,
+#         user_id=challenger_user.id,
+#         noti_type="challenge_accepted",
+#         title=f"{owner_user.nickname or owner_user.name} 농부와 내기가 시작되었어요.",
+#         body=duel_title,
+#         deeplink=deeplink,
+#     )
+#     # 4) Duel용 UserHabit 두 개 생성
 
-    db.commit()
-    return
+#     # 4-1) 나(도전 받은 사람)는 상대 완료 습관(opponent_uh)에 도전
+#     owner_duel_habit = UserHabit(
+#         user_id=ex.to_user_id,                
+#         source_habit_id=opponent_uh.source_habit_id,
+#         title=opponent_uh.title,
+#         method=opponent_uh.method,
+#         deadline_local=ex.deadline_local,
+#         days_of_week=ex.days_of_week,
+#         period_start=ex.start_date,
+#         period_end=ex.end_date,
+#         is_active=True,
+#         created_at=now,
+#         difficulty=ex.difficulty,
+#         status="active",
+#         duel_id=duel.id,
+#     )
+
+#     # 4-2) 상대(도전 건 사람)는 내 원본(owner_habit)에 도전
+#     challenger_duel_habit = UserHabit(
+#         user_id=ex.from_user_id,          # 송강호
+#         source_habit_id=owner_habit.id,   # 코테
+#         title=owner_habit.title,
+#         method=owner_habit.method,
+#         deadline_local=ex.deadline_local,
+#         days_of_week=ex.days_of_week,
+#         period_start=ex.start_date,
+#         period_end=ex.end_date,
+#         is_active=True,
+#         created_at=now,
+#         difficulty=ex.difficulty,
+#         status="active",
+#         duel_id=duel.id,
+#     )
+
+#     db.add_all([owner_duel_habit, challenger_duel_habit])
+
+#     owner_user.hb_balance -= stake
+    
+#     # 5) 교환 요청 삭제
+#     db.delete(ex)
+
+#     db.commit()
+#     return
 
