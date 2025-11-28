@@ -16,7 +16,7 @@ from app.routers import (
     potato,exchange,
     certification,media,
     duel,attendance,
-    notification)
+    notification,wallet,shop)
 
 app = FastAPI(title="Hashbrown API", version="1.0.0")
 start_scheduler()
@@ -48,6 +48,8 @@ app.include_router(media.router)
 app.include_router(duel.router)
 app.include_router(attendance.router)
 app.include_router(notification.router)
+app.include_router(shop.router)
+app.include_router(wallet.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}

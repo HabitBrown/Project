@@ -3,12 +3,14 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:pbl_front/core/base_url.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // AppColors, AppImages 는 기존 home_screen.dart 에 있다고 가정
 import '../home/home_screen.dart';
 
 
-const bool DUMMY_MODE = true;
+const bool DUMMY_MODE = false;
 const int dummyBalance = 500;
 
 /// dummy data infos
@@ -134,14 +136,15 @@ class Order {
 /// =============================================================
 
 class ShopApi {
-  // TODO: 실제 백엔드 주소로 변경
-  static const String baseUrl = 'https://api.your-server.com';
+  static const String baseUrl = kBaseUrl;
 
-  // TODO: 실제로는 로그인 후 받은 토큰 등을 사용
-  static Map<String, String> _headers() {
+  static Future<Map<String, String>> _headers() async {
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString("access_token");
     return {
       'Content-Type': 'application/json',
-      // 'Authorization': 'Bearer YOUR_TOKEN',
+      if (token != null) 'Authorization': 'Bearer $token',
     };
   }
 
@@ -155,7 +158,9 @@ class ShopApi {
     }
 
     final uri = Uri.parse('$baseUrl/me/wallet');
-    final res = await http.get(uri, headers: _headers());
+
+    final headers = await _headers();
+    final res = await http.get(uri, headers: headers);
 
     if (res.statusCode != 200) {
       throw Exception('HB 잔액 조회 실패 (status: ${res.statusCode})');
@@ -175,8 +180,10 @@ class ShopApi {
       await Future.delayed(const Duration(milliseconds: 400));
       return dummyItems;
     }
+
+    final headers = await _headers();
     final uri = Uri.parse('$baseUrl/shop/items');
-    final res = await http.get(uri, headers: _headers());
+    final res = await http.get(uri, headers: headers);
 
     if (res.statusCode != 200) {
       throw Exception('상품 목록 조회 실패 (status: ${res.statusCode})');
@@ -210,11 +217,11 @@ class ShopApi {
       );
     }
 
+    final headers = await _headers();
     final uri = Uri.parse('$baseUrl/shop/orders');
 
     final body = jsonEncode({'item_id': itemId});
-
-    final res = await http.post(uri, headers: _headers(), body: body);
+    final res = await http.post(uri, headers: headers, body: body);
 
     if (res.statusCode != 200 && res.statusCode != 201) {
       throw Exception('주문 실패 (status: ${res.statusCode})');
@@ -347,6 +354,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         _hbBalance -= item.priceHb;
         _isLoading = false;
       });
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('hb_balance', _hbBalance);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

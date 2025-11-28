@@ -674,19 +674,21 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
         const SizedBox(width: 10),
         IconButton(
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
-          onPressed: () {
+          onPressed: () async {
             Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => ShoppingScreen(),
-                ),
+                    builder: (_) => ShoppingScreen()),
             );
+            await _syncUserFromServer();
           },
         ),
         const SizedBox(width: 6),
       ],
     );
   }
+
+  Future<void> _syncUserFromServer() async {}
 }
 
 /// =======================
