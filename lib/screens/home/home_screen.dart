@@ -13,6 +13,8 @@ import '../../services/home_service.dart';
 import '../../services/certification_service.dart';
 import '../../core/base_url.dart';
 
+import '../../state/hb_state.dart';
+
 import 'habit_setting.dart';
 import 'cert_page.dart';
 import 'mypage_screen.dart';
@@ -162,13 +164,19 @@ class _HomeScreenState extends State<HomeScreen> {
       nickname = widget.initialNickname!.trim();
     }
 
+    HbState.instance.loadFromPrefs();
+    HbState.instance.hb.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        _hb = HbState.instance.hb.value;
+      });
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_){
       showDailyCheckDialog(
-          context,
-      onHbUpdated: (newHb){
-            setState(() {
-              _hb = newHb;
-            });
+        context,
+        onHbUpdated: (newHb) async {
+          await HbState.instance.setBalance(newHb);
         },
       );
     });
@@ -223,13 +231,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final nick = (prefs.getString('nickname') ?? '').trim();
     final name = (prefs.getString('name') ?? '').trim();
     final avatar = (prefs.getString('profile_picture') ?? '').trim();
-    final hb = prefs.getInt('hb_balance') ?? 0;
 
     if (!mounted) return;
     setState(() {
       nickname = nick.isNotEmpty ? nick : (name.isNotEmpty ? name : nickname);
       _avatarUrl = avatar.isNotEmpty ? avatar : null;
-      _hb = hb;
     });
   }
 
@@ -264,12 +270,13 @@ class _HomeScreenState extends State<HomeScreen> {
       // 로컬 캐시 갱신
       await prefs.setString('nickname', nick);
       await prefs.setString('name', name);
-      await prefs.setInt('hb_balance', balance);
       if (normalizedAvatar == null) {
         await prefs.remove('profile_picture');
       } else {
         await prefs.setString('profile_picture', normalizedAvatar);
       }
+
+      await HbState.instance.setBalance(balance);
 
       if (!mounted) return;
       setState(() {
@@ -278,7 +285,6 @@ class _HomeScreenState extends State<HomeScreen> {
         } else if (name.isNotEmpty) {
           nickname = name;
         }
-        _hb = balance;
         _avatarUrl = normalizedAvatar;
       });
     } catch (_) {
@@ -513,7 +519,20 @@ class _HomeScreenState extends State<HomeScreen> {
           constraints: const BoxConstraints(maxWidth: 540),
           child: CustomScrollView(
             slivers: [
-              SliverToBoxAdapter(child: _TopBar(hb: _hb)),
+              // HB는 공용 상태를 직접 구독
+              SliverToBoxAdapter(
+                  child: ValueListenableBuilder<int>(
+              valueListenable: HbState.instance.hb,
+              builder: (_, hb, __){
+                return _TopBar(
+                    hb: hb,
+                    onAfterShopping:() async{
+                    await HbState.instance.refreshFromServer();
+                    },
+                  );
+                },
+                ),
+              ),
               SliverToBoxAdapter(
                 child: Container(
                   color: AppColors.cream,
@@ -587,19 +606,20 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _tab,
         onChanged: (i) async {
           if (i == 0) {
-            Navigator.pushNamed(
+            // 감자캐기
+            await Navigator.pushNamed(
               context,
               '/potato',
-              arguments: {'hbCount': _hb},
+              arguments: {'hbCount': HbState.instance.hb.value},
             );
-            await _syncUserFromServer();
+            await HbState.instance.refreshFromServer();
           } else if (i == 1) {
             Navigator.pushNamed(
               context,
               '/hash',
-              arguments: {'hbCount': _hb},
+              arguments: {'hbCount': HbState.instance.hb.value},
             );
-            await _syncUserFromServer();
+            await HbState.instance.refreshFromServer();
           } else if (i == 3){
             Navigator.push(
                 context,
@@ -611,7 +631,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.pushNamed(
               context,
               '/mypage',
-              arguments: {'hbCount': _hb},
+              arguments: {'hbCount': HbState.instance.hb.value},
             );
           } else {
             setState(() {
@@ -629,7 +649,13 @@ class _HomeScreenState extends State<HomeScreen> {
 /// =======================
 class _TopBar extends StatelessWidget implements PreferredSizeWidget {
   final int hb;
-  const _TopBar({super.key, required this.hb});
+  final Future<void> Function()? onAfterShopping;
+
+  const _TopBar({
+    super.key,
+    required this.hb,
+    this.onAfterShopping,
+  });
 
   @override
   Size get preferredSize => const Size.fromHeight(92);
@@ -675,20 +701,22 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
         IconButton(
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
           onPressed: () async {
-            Navigator.push(
+            await Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => ShoppingScreen()),
+                    builder: (_) => ShoppingScreen()
+                ),
             );
-            await _syncUserFromServer();
+
+            if (onAfterShopping != null){
+              await onAfterShopping!();
+            }
           },
         ),
         const SizedBox(width: 6),
       ],
     );
   }
-
-  Future<void> _syncUserFromServer() async {}
 }
 
 /// =======================

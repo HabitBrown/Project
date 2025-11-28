@@ -4,6 +4,7 @@ import 'package:pbl_front/screens/home/shopping_screen.dart';
 import 'fight_setting.dart';
 import 'home_screen.dart' show AppImages, AppColors;
 import 'hash_fight.dart';
+import '../../state/hb_state.dart';
 import '../../services/exchange_service.dart';
 import '../../services/duel_service.dart';
 import '../../core/base_url.dart';
@@ -141,7 +142,7 @@ class HashScreen extends StatefulWidget {
 }
 
 class _HashScreenState extends State<HashScreen> {
-  late int _currentHb;
+  //late int _currentHb;
 
   /// 도전장 목록 (거절하면 여기서 제거)
   late List<ChallengeInfo> _challenges;
@@ -154,25 +155,10 @@ class _HashScreenState extends State<HashScreen> {
   @override
   void initState() {
     super.initState();
-    _currentHb = widget.hbCount;
+    //_currentHb = widget.hbCount;
     _challenges = [];
     _loadChallenges();
     _loadRivals();
-  }
-
-  @override
-  void didChangeDependencies(){
-    super.didChangeDependencies();
-
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if(args is Map && args['hbCount'] is int) {
-      final int fromRoute = args['hbCount'] as int;
-      if(fromRoute != _currentHb) {
-        setState(() {
-          _currentHb = fromRoute;
-        });
-      }
-    }
   }
 
   Future<void> _loadChallenges() async {
@@ -190,7 +176,7 @@ class _HashScreenState extends State<HashScreen> {
   }
 
   /// 확인해보기 눌렀을 때 아래 패널 띄우기
-  void _onCheckChallenge(ChallengeInfo info) {
+  void _onCheckChallenge(ChallengeInfo info, int myHb) {
     final int idx = _challenges.indexOf(info);
 
     showModalBottomSheet(
@@ -201,7 +187,7 @@ class _HashScreenState extends State<HashScreen> {
         return _ChallengeDetailSheet(
           info: info,
           fromUserId: info.fromUserId,
-          myHb: _currentHb,
+          myHb: myHb,
           onAccept: (selectedHash) async {
             // 1) 바텀시트 닫기
             Navigator.of(ctx).pop();
@@ -307,85 +293,87 @@ class _HashScreenState extends State<HashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kPageBg,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 540),
-          child: CustomScrollView(
-            slivers: [
-              const SliverToBoxAdapter(child: SizedBox(height: 0)),
-              SliverToBoxAdapter(
-                child: _HashTopBar(hbCount: _currentHb),
-              ),
-              SliverToBoxAdapter(
-                child: Container(
-                  color: kPageBg,
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const _HashHeader(),
-                      const SizedBox(height: 20),
-                      _ChallengeList(
-                        items: _challenges,
-                        onCheck: _onCheckChallenge,
+    return ValueListenableBuilder<int>(
+      valueListenable: HbState.instance.hb,
+        builder: (_, hb, __) {
+          return Scaffold(
+            backgroundColor: kPageBg,
+              body: Center(
+                child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 540),
+                    child: CustomScrollView(
+                    slivers: [
+                      const SliverToBoxAdapter(child: SizedBox(height: 0)),
+                      SliverToBoxAdapter(
+                        child: _HashTopBar(hbCount: hb),
+                      ),
+                      SliverToBoxAdapter(
+                          child: Container(
+                            color: kPageBg,
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const _HashHeader(),
+                                  const SizedBox(height: 20),
+                                  _ChallengeList(
+                                    items: _challenges,
+                                    onCheck: (info) => _onCheckChallenge(info, hb),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      SliverToBoxAdapter(
+                          child: _RivalSection(
+                            rivals: _rivals,
+                            onTapRival: _openHashFight,
+                          ),
+                      ),
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: ColoredBox(color: kBelowFighting),
                       ),
                     ],
                   ),
                 ),
               ),
-              SliverToBoxAdapter(
-                child: _RivalSection(
-                    rivals: _rivals,
-                    onTapRival: _openHashFight,
+                bottomNavigationBar: _HashBottomBar(
+                  index: 1,
+                  onChanged: (i){
+                    if (i == 0) {
+                      Navigator.pushReplacementNamed(
+                      context,
+                      '/potato',
+                      arguments: {'hbCount': hb},
+                    );
+                  }else if (i == 1) {
+                    // 현재 화면
+                  }else if (i == 2) {
+                      Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/home',
+                      (route) => false
+                      );
+                  }else if (i == 3){
+                      Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                      builder: (_) => const AlarmScreen(),
+                      ),
+                    );
+                  } else if (i == 4){
+                    Navigator.pushReplacementNamed(
+                      context,
+                      '/mypage',
+                      arguments: {'hbCount':hb},
+                      );
+                    }
+                  },
                 ),
-              ),
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: ColoredBox(color: kBelowFighting),
-              ),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: _HashBottomBar(
-        index: 1,
-        onChanged: (i) {
-          if (i == 0) {
-            // 감자캐기
-            Navigator.pushReplacementNamed(
-              context,
-              '/potato',
-              arguments: {'hbCount': _currentHb},
-            );
-          } else if (i == 1) {
-            // 해시내기(현재 화면) → 아무것도 안 함
-          } else if (i == 2) {
-            // 홈화면으로 이동
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              '/home',
-                  (route) => false,
-            );
-          } else if (i == 3) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const AlarmScreen(),
-              ),
-            );
-          } else if (i == 4) {
-            // ✅ 마이페이지 이동
-            Navigator.pushReplacementNamed(
-              context,
-              '/mypage',
-              arguments: {'hbCount': _currentHb},
-            );
-          }
-        },
-      ),
-    );
+              );
+            },
+          );
   }
 }
 
@@ -452,14 +440,14 @@ class _HashTopBar extends StatelessWidget implements PreferredSizeWidget {
         const SizedBox(width: 10),
         IconButton(
           icon: Image.asset(_cartPath, width: 22, height: 22),
-          onPressed: () {
+          onPressed: () async {
             Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => ShoppingScreen(
-                    ),
+                    builder: (_) => ShoppingScreen(),
                 ),
             );
+            await HbState.instance.refreshFromServer();
           },
         ),
         const SizedBox(width: 6),

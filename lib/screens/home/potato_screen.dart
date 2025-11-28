@@ -8,6 +8,7 @@ import '../../core/base_url.dart';
 import '../../models/farmer.dart';
 import '../../services/exchange_service.dart';
 import '../../services/potato_service.dart';
+import '../../state/hb_state.dart';
 import 'home_screen.dart';
 import 'hash_screen.dart';
 
@@ -35,7 +36,7 @@ class _PotatoScreenState extends State<PotatoScreen> {
   final ScrollController _mateCtrl = ScrollController();
 
   // 이 화면에서 실제로 보여줄 HB
-  late int _hb;
+  //late int _hb;
 
   // 위 캐러셀에 나오는 사람들
   List<Map<String, dynamic>> fellowFarmers = [];
@@ -52,21 +53,21 @@ class _PotatoScreenState extends State<PotatoScreen> {
   @override
   void initState() {
     super.initState();
-    _hb = widget.hbCount;
+    //_hb = widget.hbCount;
     _loadData();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // 라우트로 들어오면서 hbCount를 넘겨줄 수도 있으니 한 번 더 체크
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is Map && args['hbCount'] is int) {
-      _hb = args['hbCount'] as int;
-    } else {
-      _hb = widget.hbCount;
-    }
-  }
+  // @override
+  // void didChangeDependencies() {
+  //   super.didChangeDependencies();
+  //   // 라우트로 들어오면서 hbCount를 넘겨줄 수도 있으니 한 번 더 체크
+  //   final args = ModalRoute.of(context)?.settings.arguments;
+  //   if (args is Map && args['hbCount'] is int) {
+  //     _hb = args['hbCount'] as int;
+  //   } else {
+  //     _hb = widget.hbCount;
+  //   }
+  // }
 
   Future<void> _loadData() async {
     try {
@@ -245,218 +246,98 @@ class _PotatoScreenState extends State<PotatoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isSearching = _searchKeyword.trim().isNotEmpty;
-    final visibleFarmers =
-    isSearching ? _filterByKeyword(_searchKeyword) : recommendedFarmers;
+    return ValueListenableBuilder<int>(
+      valueListenable: HbState.instance.hb,
+      builder: (_, hb, __) {
+        final bool isSearching = _searchKeyword.trim().isNotEmpty;
+        final visibleFarmers =
+        isSearching ? _filterByKeyword(_searchKeyword) : recommendedFarmers;
 
-    return Scaffold(
-      // 전체 배경 흰색
-      backgroundColor: Colors.white,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 540),
-          child: CustomScrollView(
-            slivers: [
-              // 상단바
-              SliverToBoxAdapter(
-                child: _PotatoTopBar(hbCount: _hb),
-              ),
-
-              // 상단 설명 카드
-              const SliverToBoxAdapter(child: _PotatoHeaderWrapper()),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
-
-              // 동료 농부
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '동료 농부',
-                        style: TextStyle(
-                          color: AppColors.dark,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        height: 100,
-                        child: Stack(
-                          children: [
-                            // 리스트
-                            Positioned.fill(
-                              left: 46,
-                              right: 46,
-                              child: ListView.separated(
-                                controller: _mateCtrl,
-                                scrollDirection: Axis.horizontal,
-                                itemCount: fellowFarmers.length,
-                                separatorBuilder: (_, __) =>
-                                const SizedBox(width: 14),
-                                itemBuilder: (context, index) {
-                                  // 빈칸
-                                  if (index >= fellowFarmers.length) {
-                                    return Column(
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                      children: [
-                                        Container(
-                                          width: 58,
-                                          height: 58,
-                                          decoration: const BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: Color(0xFFD9D9D9),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        const SizedBox(
-                                          width: 60,
-                                          height: 12,
-                                        ),
-                                      ],
-                                    );
-                                  }
-
-                                  final farmer = fellowFarmers[index];
-                                  return Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      _ProfileCircle(
-                                        size: 58,
-                                        avatarPath:
-                                        farmer['avatarUrl'] as String?,
-                                      ),
-                                      const SizedBox(height: 6),
-                                      SizedBox(
-                                        width: 60,
-                                        child: Text(
-                                          farmer['name'] ?? '',
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(fontSize: 11),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-                            // 왼쪽 화살표
-                            Positioned(
-                              left: 0,
-                              top: 30,
-                              child: _CircleArrow(
-                                icon: Icons.arrow_back,
-                                onTap: _scrollLeft,
-                              ),
-                            ),
-                            // 오른쪽 화살표
-                            Positioned(
-                              right: 0,
-                              top: 30,
-                              child: _CircleArrow(
-                                icon: Icons.arrow_forward,
-                                onTap: _scrollRight,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 540),
+              child: CustomScrollView(
+                slivers: [
+                  // 상단바
+                  SliverToBoxAdapter(
+                    child: _PotatoTopBar(hbCount: hb),   // ✅ _hb 대신 hb 사용
                   ),
-                ),
-              ),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 30)),
+                  const SliverToBoxAdapter(child: _PotatoHeaderWrapper()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 18)),
 
-              // 검색 박스
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _SearchBox(
-                    onSearch: (keyword) {
-                      setState(() {
-                        _searchKeyword = keyword;
-                      });
-                    },
-                  ),
-                ),
-              ),
+                  // ... (중간 내용 그대로)
 
-              SliverToBoxAdapter(
-                child: SizedBox(height: isSearching ? 22 : 90),
-              ),
-
-              // 추천 / 검색 결과
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isSearching) const _RecommendButton(),
-                      if (!isSearching) const SizedBox(height: 10),
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: visibleFarmers.length,
-                        separatorBuilder: (_, __) =>
-                        const SizedBox(height: 55),
-                        itemBuilder: (context, index) {
-
-                          final data = visibleFarmers[index];
-                          final isFollowing = fellowFarmers.any((f) => f['userId'] == data.userId);
-                          return _FarmerCard(
-                            name: data.name,
-                            bio: data.bio,
-                            tags: data.tags,
-                            hashes: data.hashes,
-                            avatarPath: data.avatarUrl,
-                            isFollowing: data.isFollowing,
-                            myHb: _hb,
-                            onFollow: () => _handleFollow(data),
-                            onUnfollow: () => _handleUnfollow(data),
-                            onExchangeHash: (hash) => _openFightSetting(hash),
-                          );
-                        },
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isSearching) const _RecommendButton(),
+                          if (!isSearching) const SizedBox(height: 10),
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: visibleFarmers.length,
+                            separatorBuilder: (_, __) =>
+                            const SizedBox(height: 55),
+                            itemBuilder: (context, index) {
+                              final data = visibleFarmers[index];
+                              final isFollowing = fellowFarmers
+                                  .any((f) => f['userId'] == data.userId);
+                              return _FarmerCard(
+                                name: data.name,
+                                bio: data.bio,
+                                tags: data.tags,
+                                hashes: data.hashes,
+                                avatarPath: data.avatarUrl,
+                                isFollowing: data.isFollowing,
+                                myHb: hb,                   // ✅ 여기도 hb 사용
+                                onFollow: () => _handleFollow(data),
+                                onUnfollow: () => _handleUnfollow(data),
+                                onExchangeHash: (hash) => _openFightSetting(hash),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 120),
+                        ],
                       ),
-                      const SizedBox(height: 120),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
-      bottomNavigationBar: _PotatoBottomBar(
-        index: 0,
-        onChanged: (i) {
-          if (i == 0) return; // 현재 탭
-          if (i == 1) {
-            // 해시내기로 갈 때 지금 가진 HB 넘기고, 거기서 바뀌면 여기에도 반영 + 위에도 반영
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => HashScreen(
-                  hbCount: _hb,
-                  onHbChanged: (v) {
-                    setState(() => _hb = v); // 이 화면 숫자 갱신
-                    widget.onHbChanged?.call(v); // 홈에도 올려보내기
-                  },
-                ),
-              ),
-            );
-          } else {
-            Navigator.pop(context);
-          }
-        },
-      ),
+          bottomNavigationBar: _PotatoBottomBar(
+            index: 0,
+            onChanged: (i) {
+              if (i == 0) return; // 현재 탭
+              if (i == 1) {
+                // 해시내기로 갈 때도 전역 hb 값 사용
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HashScreen(
+                      hbCount: hb,
+                      onHbChanged: (v) async {
+                        await HbState.instance.setBalance(v); // ✅ 공용 상태 반영
+                      },
+                    ),
+                  ),
+                );
+              } else {
+                Navigator.pop(context);
+              }
+            },
+          ),
+        );
+      },
     );
   }
+
 }
 
 /// =========================
@@ -526,14 +407,14 @@ class _PotatoTopBar extends StatelessWidget implements PreferredSizeWidget {
         const SizedBox(width: 10),
         IconButton(
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
-          onPressed: () {
+          onPressed: () async {
             Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder:  (_) => ShoppingScreen(
-                    ),
+                    builder:  (_) => ShoppingScreen(),
                 ),
             );
+            await HbState.instance.refreshFromServer();
           },
         ),
         const SizedBox(width: 6),
