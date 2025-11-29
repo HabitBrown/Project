@@ -71,6 +71,20 @@ class _MyPageScreenState extends State<MyPageScreen> {
     _loadUserInterests();
   }
 
+  Future<void> _handleLogout(BuildContext dialogContext) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    if (!mounted) return;
+
+    Navigator.of(dialogContext).pop();
+
+    Navigator.of(context).pushNamedAndRemoveUntil(
+        '/login',
+        (route) => false,
+    );
+  }
+
   Future<void> _loadUserProfile() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -282,7 +296,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                           _SettingsBigButton(
                             label: '로그아웃',
                             onTap: () {
-                              Navigator.of(ctx).pop();
+                              _handleLogout(ctx);
                             },
                           ),
                         ],
