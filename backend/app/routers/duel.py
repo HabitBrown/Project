@@ -139,7 +139,7 @@ def _forfeit_duel(
         db=db,
         user_id=loser.id,
         noti_type="cert_fail",   # → pushType "certification"
-        title="듀얼이 패배로 종료되었어요.",
+        title="내기가 패배로 종료되었어요.",
         body=duel_title,
         deeplink=f"/duels/{duel.id}",
     )
@@ -148,7 +148,7 @@ def _forfeit_duel(
         db=db,
         user_id=winner.id,
         noti_type="cert_success",  # → pushType "certification"
-        title="상대 농부가 패배해서 듀얼이 종료되었어요.",
+        title="상대 농부가 패배해서 내기가 종료되었어요.",
         body=duel_title,
         deeplink=f"/duels/{duel.id}",
     )
@@ -223,8 +223,8 @@ def _finish_duel_both_end(
             challenger_title = f"{owner_user.nickname or owner_user.name} 농부와 듀얼을 완주했어요."
         else:
             # 혹시 유저가 None일 경우 대비
-            owner_title = "듀얼 습관을 함께 완주했어요."
-            challenger_title = "듀얼 습관을 함께 완주했어요."
+            owner_title = "내기 습관을 함께 완주했어요."
+            challenger_title = "내기 습관을 함께 완주했어요."
 
         # owner 쪽 알림
         if owner_user:
@@ -345,7 +345,7 @@ def give_up_duel(
     _forfeit_duel(db, duel, loser_user_id=current_user.id)
     db.commit()
 
-    return {"detail": "듀얼을 포기하였습니다."}
+    return {"detail": "내기를 포기하였습니다."}
 
 @router.get("/active", response_model=List[ActiveDuelItem])
 def get_active_duels(

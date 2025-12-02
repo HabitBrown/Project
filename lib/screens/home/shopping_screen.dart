@@ -16,7 +16,7 @@ const int dummyBalance = 500;
 /// dummy data infos
 ///  백엔드 연결 후  DUMMY_MODE 만 false로 바꿔 주시면 됩니다.
 ///
-// 더미 상품 리스트
+//더미 상품 리스트
 final List<ShopItem> dummyItems = [
   ShopItem(
     id: 1,
@@ -81,6 +81,17 @@ class ShopItem {
   });
 
   factory ShopItem.fromJson(Map<String, dynamic> json) {
+    final rawUrl = json['image_url'] as String?;
+    String? resolvedUrl;
+    if (rawUrl != null && rawUrl.isNotEmpty) {
+      if (rawUrl.startsWith('http')) {
+        resolvedUrl = rawUrl;
+      } else {
+        // /uploads/... 형태면 서버 주소를 앞에 붙이기
+        resolvedUrl = '$kBaseUrl$rawUrl';
+      }
+    }
+
     return ShopItem(
       id: json['id'] as int,
       name: json['name'] as String,

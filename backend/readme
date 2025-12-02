@@ -60,3 +60,34 @@ INSERT INTO interests (id, name) VALUES
   (6, '사진'),
   (7, '음악'),
   (8, '춤');
+
+
+-- Convenience
+INSERT INTO shop_items (category, name, price_hb, image_url)
+VALUES
+('convenience', '츄파춥스', 500, NULL),
+('convenience', '가나 초콜릿', 1200, NULL),
+('convenience', '하리보 젤리', 800, NULL),
+('convenience', '포카칩 오리지널', 1000, NULL),
+('convenience', '삼각김밥 참치마요', 1300, NULL),
+('convenience', '코카콜라 500ml', 1500, NULL);
+
+-- Cafe
+INSERT INTO shop_items (category, name, price_hb, image_url)
+VALUES
+('restaurant', '맘스터치 싸이버거', 1800, NULL),
+('restaurant', '롯데리아 새우버거', 2200, NULL),
+('restaurant', 'KFC 타워버거', 2500, NULL),
+('restaurant', '도미노피자 미니', 2800, NULL),
+('restaurant', '버거킹 와퍼주니어', 2300, NULL),
+('restaurant', '서브웨이 에그마요', 2600, NULL);
+
+-- Restaurant
+INSERT INTO shop_items (category, name, price_hb, image_url)
+VALUES
+('cafe', '스타벅스 아메리카노', 2000, NULL),
+('cafe', '메가MGC 아이스라떼', 1800, NULL),
+('cafe', '컴포즈 바닐라라떼', 1700, NULL),
+('cafe', '이디야 토피넛라떼', 1900, NULL),
+('cafe', '빽다방 초코라떼', 1600, NULL),
+('cafe', '할리스 카푸치노', 2100, NULL);
