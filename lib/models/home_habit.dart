@@ -7,17 +7,24 @@ class HomeHabit {
   final int userHabitId;   // 백엔드 user_habit_id
   final String title;
   final String time;       // "HH:MM까지" 같은 표시용 문자열
-  final String method;     // "photo" / "text" (UI에서 "사진"/"텍스트"로 보여줄 수 있음)
+  final String method;     // "photo" / "text"
+  final double progress;   // 0.0 ~ 1.0
 
-  double progress;         // 0.0 ~ 1.0 (지금은 0.0 고정)
-  HabitStatus status;      // 클라이언트 전용 상태
+  // 🔥 여기 추가: 내기 정보
+  final int? duelId;         // 이 습관이 연결된 duel id (없으면 null)
+  final String? partnerName; // 상대 닉네임 (없으면 null)
+
+  // 이 enum은 홈 DTO 에서는 안 써도 상관 없지만, 기존 코드 유지
+  final HabitStatus status;  // 기본은 pending 으로 고정
 
   HomeHabit({
     required this.userHabitId,
     required this.title,
     required this.time,
     required this.method,
-    this.progress = 0.0,
+    required this.progress,
+    this.duelId,
+    this.partnerName,
     this.status = HabitStatus.pending,
   });
 
@@ -40,7 +47,10 @@ class HomeHabit {
       time: displayTime,
       method: json['method'] as String,
       progress: progressNum,
-      status: HabitStatus.pending, // 서버에서 안 내려오므로 기본값
+
+      // 🔥 백엔드 응답에 맞춰서 duel 정보까지 같이 받기
+      duelId: json['duel_id'] as int?,                 // ← 응답 키 이름이 duel_id 라고 가정
+      partnerName: json['rival_nickname'] as String?,  // ← 응답 키 이름이 rival_nickname 이라고 가정
     );
   }
 }

@@ -1,5 +1,8 @@
 ﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+
+    <!-- ✅ 여기에 인터넷 권한 추가 -->
+    <uses-permission android:name="android.permission.INTERNET" />
 <!-- camera & gallery permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- 안드로이드 13(Tiramisu, API 33) 이상에서 갤러리 접근 -->

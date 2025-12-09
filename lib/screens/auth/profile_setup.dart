@@ -237,20 +237,76 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   }
 
   @override
+  bool _initializedFromArgs = false; // 👈 클래스 맨 위에 필드 하나 추가
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 최초 1회만 arguments에서 userId / nickname 가져오기
-    if (_userId == null) {
-      final args = ModalRoute.of(context)?.settings.arguments;
-      if (args is Map) {
-        _userId = args['userId'] as int?;
-        final nickFromSignup = (args['nickname'] as String?)?.trim();
-        if (nickFromSignup != null && nickFromSignup.isNotEmpty) {
-          _nicknameCtrl.text = nickFromSignup;
-        }
+
+    // 한 번만 초기화
+    if (_initializedFromArgs) return;
+    _initializedFromArgs = true;
+
+    final args = ModalRoute.of(context)?.settings.arguments;
+
+    debugPrint('ProfileSetupPage args: $args'); // 👈 실제로 뭐가 오는지 로그로 찍기
+
+    if (args is Map) {
+      // userId
+      final userIdArg = args['userId'];
+      if (userIdArg != null) {
+        _userId = userIdArg as int?;
       }
+
+      // 닉네임
+      final nick = args['nickname'];
+      if (nick != null && nick.toString().trim().isNotEmpty) {
+        _nicknameCtrl.text = nick.toString().trim();
+      }
+
+      // 성별 (남/여/없음 형태라고 가정)
+      final gender = args['gender'];
+      if (gender != null) {
+        _selectedGender = gender.toString();
+      }
+
+      // 🔥 나이 (int든 String이든 그냥 toString으로 처리)
+      final age = args['age'];
+      if (age != null && age.toString().isNotEmpty) {
+        _ageCtrl.text = age.toString();
+      }
+
+      // 한줄 소개
+      final intro = args['intro'];
+      if (intro != null && intro.toString().isNotEmpty) {
+        _introCtrl.text = intro.toString();
+      }
+
+      // 관심사
+      final interests = args['interests'];
+      if (interests is List) {
+        _selectedInterests
+          ..clear()
+          ..addAll(interests.map((e) => e.toString()));
+      }
+
+      // 🔥 프로필 사진 URL(서버 이미지)
+      final avatarUrl = args['avatarUrl'];
+      if (avatarUrl != null && avatarUrl.toString().isNotEmpty) {
+        _uploadedImageUrl = avatarUrl.toString();
+      }
+
+      // 🔥 로컬 파일 경로
+      final avatarPath = args['avatarPath'];
+      if (avatarPath != null && avatarPath.toString().isNotEmpty) {
+        _profileImageFile = XFile(avatarPath.toString());
+      }
+
+      setState(() {}); // 값들 반영
     }
   }
+
+
 
   @override
   void dispose() {

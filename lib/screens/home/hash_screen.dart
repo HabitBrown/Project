@@ -132,14 +132,19 @@ class HashScreen extends StatefulWidget {
     super.key,
     required this.hbCount,
     this.onHbChanged,
+    this.autoOpenFirstRival = false,   // ✅ 추가
   });
 
   final int hbCount;
   final ValueChanged<int>? onHbChanged;
 
+  // ✅ 홈에서 넘어올 때 "자동으로 첫 라이벌 열어줘" 플래그
+  final bool autoOpenFirstRival;
+
   @override
   State<HashScreen> createState() => _HashScreenState();
 }
+
 
 class _HashScreenState extends State<HashScreen> {
   //late int _currentHb;
@@ -151,6 +156,8 @@ class _HashScreenState extends State<HashScreen> {
   final _duelService = DuelService();
 
   List<RivalInfo> _rivals = [];
+
+  bool _openedAutoRival = false;
 
   @override
   void initState() {
@@ -266,13 +273,30 @@ class _HashScreenState extends State<HashScreen> {
   Future<void> _loadRivals() async {
     try {
       final items = await _duelService.fetchActiveDuels();
+      if (!mounted) return; // ✅ 위젯 dispose 된 뒤면 아무것도 안 하기
+
       setState(() {
         _rivals = items;
       });
+
+      // ✅ 여기서 자동 오픈 처리
+      if (widget.autoOpenFirstRival && !_openedAutoRival) {
+        if (_rivals.isNotEmpty) {
+          _openedAutoRival = true; // 두 번 이상 열리는 것 방지
+
+          // 바로 Navigator.push를 호출하면 setState/build 타이밍이랑 겹칠 수 있어서,
+          // 프레임 끝난 뒤에 열어주기
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _openHashFight(_rivals.first);  // 👈 첫 번째 라이벌 자동 오픈
+          });
+        }
+      }
     } catch (e) {
       debugPrint('듀얼 목록 로드 실패: $e');
     }
   }
+
 
   Future<void> _openHashFight(RivalInfo rival) async {
     final result = await Navigator.push<bool>(
@@ -286,10 +310,18 @@ class _HashScreenState extends State<HashScreen> {
     );
 
     if (result == true) {
-      // 포기 후 돌아온 경우
+      // 포기 후 돌아온 경우 등 → 듀얼 목록 갱신
       await _loadRivals();
     }
+
+    // 🔥 홈에서 "라이벌 보러가기"로 들어온 숨김 모드라면,
+    // 해시내기 화면(HashScreen)까지 같이 닫아서
+    // 유저 기준으로는 "홈 ↔ 라이벌 페이지"만 보이게 만들기
+    if (widget.autoOpenFirstRival && mounted) {
+      Navigator.pop(context); // HashScreen 닫고 바로 이전 화면(홈)으로
+    }
   }
+
 
   @override
   Widget build(BuildContext context) {

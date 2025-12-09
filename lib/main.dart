@@ -40,7 +40,8 @@ class HabitBrownApp extends StatelessWidget {
         '/home': (_) => const HomeScreen(),
 
         // 해시내기 & 감자캐기
-        '/hash': (_) => const HashScreen(hbCount: 0),
+        // ❌ 이 줄만 지워주기 (arguments를 써야 해서)
+        // '/hash': (_) => const HashScreen(hbCount: 0),
         '/potato': (_) => const PotatoScreen(hbCount: 0),
 
         // 습관 설정 페이지
@@ -54,6 +55,28 @@ class HabitBrownApp extends StatelessWidget {
           targetTitle: '기본 제목',
         ),
       },
+
+      // ✅ 여기만 새로 추가
+      onGenerateRoute: (settings) {
+        if (settings.name == '/hash') {
+          final args = settings.arguments as Map?;
+          final hb = args?['hbCount'] as int? ?? 0;
+          final autoOpen =
+              args?['autoOpenFirstRival'] as bool? ?? false;
+
+          return MaterialPageRoute(
+            builder: (_) => HashScreen(
+              hbCount: hb,
+              autoOpenFirstRival: autoOpen,
+            ),
+          );
+        }
+
+        // 다른 라우트는 여기서 안 건드리고, null 리턴해서
+        // 위에 routes: {} 설정을 그대로 사용하게 둠
+        return null;
+      },
     );
   }
 }
+

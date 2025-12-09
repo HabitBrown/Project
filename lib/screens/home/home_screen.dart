@@ -6,11 +6,11 @@ import 'package:pbl_front/screens/daily_check.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/farmer.dart';
 import '../../models/home_summary.dart';
-import '../../models/home_habit.dart' as dto;
 import '../../services/auth_service.dart';
 import '../../services/habit_service.dart';
 import '../../services/home_service.dart';
 import '../../services/certification_service.dart';
+import '../../services/duel_service.dart';
 import '../../core/base_url.dart';
 
 import '../../state/hb_state.dart';
@@ -20,6 +20,11 @@ import 'cert_page.dart';
 import 'mypage_screen.dart';
 import 'alarm_screen.dart';
 import 'shopping_screen.dart';
+import 'hash_screen.dart';
+
+import '../../models/home_habit.dart' as dto;
+import 'hash_fight.dart';
+
 
 /// =======================
 ///  공통 리소스 & 테마 정의
@@ -98,15 +103,21 @@ enum HabitStatus { pending, verified, skipped }
 class HomeHabit {
   final int userHabitId;
 
+  final int? duelId;
+  final String? partnerName;
+
+  // 🔥 duelId / rivalName 제거 (이제 홈에서는 duel 정보 안 가짐)
   String title;
   String time;
   String method;
   HabitStatus status;
-  HabitSetupData? source; // 설정에서 온 원본 (habit_setting.dart)
+  HabitSetupData? source;
   bool certifiedToday;
 
   HomeHabit({
     required this.userHabitId,
+    this.duelId,
+    this.partnerName,
     required this.title,
     required this.time,
     required this.method,
@@ -136,6 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _hb = 0;
   bool _dailyBonusGiven = false;
 
+
   Timer? _tick;
 
   String nickname = '망설이는 감자';
@@ -148,6 +160,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // ====== 백엔드 연동 관련 필드 ======
   final _homeService = HomeService();
   final _certService = CertificationService();
+
+  final _duelService = DuelService();
 
   HomeSummary? _summary;
   bool _isSummaryLoading = true;
@@ -172,7 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_){
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       showDailyCheckDialog(
         context,
         onHbUpdated: (newHb) async {
@@ -180,7 +194,6 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       );
     });
-
 
     // late 리스트 초기화 (안전하게)
     _today = [];
@@ -192,11 +205,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     // ===== 추가: 유저 정보 & 홈 요약 불러오기 =====
-    _loadDisplayName();     // 로컬 캐시에서 닉네임/아바타/HB
-    _syncUserFromServer();  // 서버에서 유저 정보 동기화
-    _loadHomeSummary();     // 홈 요약(오늘/싸우는 습관 리스트)
+    _loadDisplayName(); // 로컬 캐시에서 닉네임/아바타/HB
+    _syncUserFromServer(); // 서버에서 유저 정보 동기화
+    _loadHomeSummary(); // 홈 요약(오늘/싸우는 습관 리스트)
   }
-
 
   @override
   void dispose() {
@@ -298,8 +310,17 @@ class _HomeScreenState extends State<HomeScreen> {
       await HabitService().evaluateHabits();
 
       final data = await _homeService.fetchSummary();
+      final certifiedIds = await _certService.fetchTodayCertifiedHabitIds();
 
-      final certifiedIds = await _certService.fetchTodayCertifiedHabitIds(); // Set<int>
+      // 🔥 추가: 현재 진행 중인 duel 목록도 같이 불러오기
+      final rivals = await _duelService.fetchActiveDuels();
+
+      // RivalInfo.myHabitTitle 기준으로 매핑
+      //   key: 내 습관 제목
+      //   value: RivalInfo (duelId, name 등 포함)
+      final Map<String, RivalInfo> rivalByTitle = {
+        for (final r in rivals) r.myHabitTitle: r,
+      };
 
       if (!mounted) return;
 
@@ -308,12 +329,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _isSummaryLoading = false;
         _summaryError = null;
 
-        // 서버 DTO(dto.HomeHabit)를 UI용 HomeHabit으로 변환
-        _today = data.todayHabits
-            .map<HomeHabit>((dto.HomeHabit h) {
+        // 🥔 1) 오늘 감자들 (그대로)
+        _today = data.todayHabits.map<HomeHabit>((dto.HomeHabit h) {
           final certified = certifiedIds.contains(h.userHabitId);
           return HomeHabit(
             userHabitId: h.userHabitId,
+            duelId: null,
+            partnerName: null,
             title: h.title,
             time: h.time,
             method: h.method,
@@ -322,11 +344,17 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }).toList();
 
-        _fighting = data.fightingHabits
-            .map<HomeHabit>((dto.HomeHabit h) {
+        // 🥔 2) 싸우고 있는 감자들
+        _fighting = data.fightingHabits.map<HomeHabit>((dto.HomeHabit h) {
           final certified = certifiedIds.contains(h.userHabitId);
+
+          // 🔍 같은 제목을 가진 RivalInfo 찾기
+          final rival = rivalByTitle[h.title];
+
           return HomeHabit(
             userHabitId: h.userHabitId,
+            duelId: rival?.duelId,       // 여기서 id 채움
+            partnerName: rival?.name,   // 상대 농부 이름
             title: h.title,
             time: h.time,
             method: h.method,
@@ -345,6 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
+
 
   int get _maxGoals => _today.length + _fighting.length;
   int get _doneGoals {
@@ -402,11 +431,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (editing == null) {
       try {
         final created = await HabitService().createHabit(result);
-        final newId = created['user_habit_id'] as int;   // 백엔드 응답 필드명
+        final newId = created['user_habit_id'] as int; // 백엔드 응답 필드명
 
         setState(() {
           final newHabit = HomeHabit(
-            userHabitId: newId,      // ★ 여기서 딱 한 번 사용
+            userHabitId: newId, // ★ 여기서 딱 한 번 사용
             title: result.title,
             time: timeLabel,
             method: methodLabel,
@@ -461,50 +490,64 @@ class _HomeScreenState extends State<HomeScreen> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFFF3BA37),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 12),
-                Text(
-                  toFighting
-                      ? '싸우고 있는 감자 선택'
-                      : '튀기기를 기다리고 있는 감자 선택',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
+      isScrollControlled: true, // ✅ 전체 높이 제어
+      backgroundColor: Colors.transparent, // 모서리 둥글게 보기 좋게
+      builder: (bottomSheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.5, // 처음 높이 (화면의 50%)
+          maxChildSize: 0.9, // 최대 높이 (화면의 90%)
+          minChildSize: 0.3, // 최소 높이
+          builder: (ctx, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Text(
+                    toFighting
+                        ? '싸우고 있는 감자 선택'
+                        : '튀기기를 기다리고 있는 감자 선택',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                ...List.generate(list.length, (i) {
-                  final h = list[i];
-                  return ListTile(
-                    title: Text(h.title),
-                    subtitle: Text(h.time),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _openHabitSetupPage(
-                        toFighting: toFighting,
-                        editing: h,
-                        index: i,
-                      );
-                    },
-                  );
-                }),
-                const SizedBox(height: 16),
-              ],
-            ),
-          ),
+                  const SizedBox(height: 8),
+
+                  // ✅ 여기부터 스크롤 영역
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      itemCount: list.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final h = list[i];
+                        return ListTile(
+                          title: Text(h.title),
+                          subtitle: Text(h.time),
+                          onTap: () {
+                            // 바텀시트 닫고 수정 페이지 열기
+                            Navigator.of(bottomSheetContext).pop();
+                            _openHabitSetupPage(
+                              toFighting: toFighting,
+                              editing: h,
+                              index: i,
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -521,16 +564,16 @@ class _HomeScreenState extends State<HomeScreen> {
             slivers: [
               // HB는 공용 상태를 직접 구독
               SliverToBoxAdapter(
-                  child: ValueListenableBuilder<int>(
-              valueListenable: HbState.instance.hb,
-              builder: (_, hb, __){
-                return _TopBar(
-                    hb: hb,
-                    onAfterShopping:() async{
-                    await HbState.instance.refreshFromServer();
-                    },
-                  );
-                },
+                child: ValueListenableBuilder<int>(
+                  valueListenable: HbState.instance.hb,
+                  builder: (_, hb, __) {
+                    return _TopBar(
+                      hb: hb,
+                      onAfterShopping: () async {
+                        await HbState.instance.refreshFromServer();
+                      },
+                    );
+                  },
                 ),
               ),
               SliverToBoxAdapter(
@@ -541,8 +584,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: Dimens.pad),
+                        padding:
+                        const EdgeInsets.symmetric(horizontal: Dimens.pad),
                         child: HeaderProfile(
                           nickname: nickname,
                           honorific: honorific,
@@ -620,12 +663,12 @@ class _HomeScreenState extends State<HomeScreen> {
               arguments: {'hbCount': HbState.instance.hb.value},
             );
             await HbState.instance.refreshFromServer();
-          } else if (i == 3){
+          } else if (i == 3) {
             Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const AlarmScreen(),
-                ),
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AlarmScreen(),
+              ),
             );
           } else if (i == 4) {
             Navigator.pushNamed(
@@ -702,13 +745,11 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
           onPressed: () async {
             await Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => ShoppingScreen()
-                ),
+              context,
+              MaterialPageRoute(builder: (_) => ShoppingScreen()),
             );
 
-            if (onAfterShopping != null){
+            if (onAfterShopping != null) {
               await onAfterShopping!();
             }
           },
@@ -737,10 +778,10 @@ class HeaderProfile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const helloStyle = TextStyle(color: Colors.black, fontSize: 14);
-    const nameBold = TextStyle(
-        fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black);
-    const titleStyle = TextStyle(
-        fontSize: 17, fontWeight: FontWeight.w400, color: Colors.black);
+    const nameBold =
+    TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.black);
+    const titleStyle =
+    TextStyle(fontSize: 17, fontWeight: FontWeight.w400, color: Colors.black);
 
     Widget avatarChild;
     if (avatarUrl != null && avatarUrl!.isNotEmpty) {
@@ -1172,8 +1213,8 @@ class _HabitInfo extends StatelessWidget {
     );
     const bodyStyle = TextStyle(
       color: AppColors.dark,
-      fontSize: 11.5,
-      height: 1.2,
+      fontSize: 9,
+      height: 1.1,
     );
 
     return Column(
@@ -1396,8 +1437,36 @@ class _StatusPill extends StatelessWidget {
               flex: 1,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  if (!isFighting) {
+                onTap: () async {
+                  if (isFighting) {
+                    // 🔍 어떤 감자를 누른 건지 로그로 확인
+                    debugPrint(
+                      '[Home] go rival: userHabitId=${h.userHabitId}, '
+                          'duelId=${h.duelId}, partner=${h.partnerName}',
+                    );
+
+                    // ✅ 이 카드에 duel 정보가 없으면 안내만 띄우고 끝
+                    if (h.duelId == null) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('내기 정보가 없어요.')),
+                        );
+                      }
+                      return;
+                    }
+
+                    // ✅ 해당 감자에 연결된 duel 로 바로 해시파이트 입장
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => HashFightPage(
+                          duelId: h.duelId!,                         // 이 감자의 duel
+                          partnerName: h.partnerName ?? '라이벌',     // 상대 이름 없으면 기본값
+                        ),
+                      ),
+                    );
+                  } else {
+                    // 기존 일반 감자 로직
                     if (h.status == HabitStatus.skipped) {
                       h.status = HabitStatus.pending;
                     } else {
@@ -1432,6 +1501,7 @@ class _StatusPill extends StatelessWidget {
                   ),
                 ),
               ),
+
             ),
         ],
       ),

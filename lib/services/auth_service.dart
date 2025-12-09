@@ -9,6 +9,32 @@ import '../core/base_url.dart';
 class AuthService {
   final _client = http.Client();
 
+  /// 프로필 화면에서 쓰는 공통 메서드
+  /// 백엔드에서 유저 정보 하나 가져와서
+  /// nickname / gender / age / bio / interests / avatarUrl 정도만 뽑아서 리턴
+  Future<Map<String, dynamic>?> fetchMyProfile(int userId) async {
+    try {
+      // 1) 일단 기존 getUser 재사용
+      final raw = await getUser(userId); // GET $kBaseUrl/auth/users/$userId
+
+      // 2) profile_setting.dart 에서 기대하는 형식으로 정리
+      return {
+        'nickname': raw['nickname'],
+        'gender': raw['gender'],              // 예: 'M' / 'F' / 'N'
+        'age': raw['age'],
+        'bio': raw['bio'],
+        // 서버에서 뭐라고 주는지에 따라 맞춰주면 됨
+        'interests': raw['interests'] ?? [],
+        // 프로필 사진 URL 키 이름에 맞게 변경
+        'avatarUrl': raw['profile_picture'] ?? raw['avatarUrl'],
+      };
+    } catch (e) {
+      print('fetchMyProfile 오류: $e');
+      return null;
+    }
+  }
+
+
   Future<bool> checkNickname(String nickname) async {
     try {
       final uri = Uri.parse('$kBaseUrl/auth/nicknames/check').replace(

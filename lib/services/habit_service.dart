@@ -161,6 +161,8 @@ class HabitService {
     }
   }
 
+
+
   Future<void> evaluateHabits() async {
     final token = await _getAccessToken();
     if (token == null) throw Exception("로그인 필요");

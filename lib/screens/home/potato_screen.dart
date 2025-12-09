@@ -2,8 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pbl_front/screens/home/shopping_screen.dart';
 
-// 이 파일에서는 Home 쪽에 있는 색/이미지 정의를 가져온다고 했으니까 그대로 둡니다.
-// home_screen.dart 안에 AppColors, AppImages 가 있다고 가정
 import '../../core/base_url.dart';
 import '../../models/farmer.dart';
 import '../../services/exchange_service.dart';
@@ -21,12 +19,12 @@ class PotatoScreen extends StatefulWidget {
     super.key,
     required this.hbCount,
     this.me,
-    this.onHbChanged, // 👈 홈이 넘겨주는 콜백
+    this.onHbChanged,
   });
 
   final int hbCount;
   final Map<String, dynamic>? me;
-  final ValueChanged<int>? onHbChanged; // 👈 해시내기에서 올라오는 HB를 다시 홈으로 전달
+  final ValueChanged<int>? onHbChanged;
 
   @override
   State<PotatoScreen> createState() => _PotatoScreenState();
@@ -35,39 +33,22 @@ class PotatoScreen extends StatefulWidget {
 class _PotatoScreenState extends State<PotatoScreen> {
   final ScrollController _mateCtrl = ScrollController();
 
-  // 이 화면에서 실제로 보여줄 HB
-  //late int _hb;
-
-  // 위 캐러셀에 나오는 사람들
+  // 위 캐러셀에 나오는 사람들 (간단 정보만)
   List<Map<String, dynamic>> fellowFarmers = [];
 
-  // 추천 농부
+  // 추천 농부 전체 목록(서버에서 받은 것)
   List<FarmerSummary> recommendedFarmers = [];
 
   // 검색어
   String _searchKeyword = '';
 
-  // 2) _loadData에서 더미 제거하고, 서비스 호출로 교체
   final _potatoService = PotatoService();
 
   @override
   void initState() {
     super.initState();
-    //_hb = widget.hbCount;
     _loadData();
   }
-
-  // @override
-  // void didChangeDependencies() {
-  //   super.didChangeDependencies();
-  //   // 라우트로 들어오면서 hbCount를 넘겨줄 수도 있으니 한 번 더 체크
-  //   final args = ModalRoute.of(context)?.settings.arguments;
-  //   if (args is Map && args['hbCount'] is int) {
-  //     _hb = args['hbCount'] as int;
-  //   } else {
-  //     _hb = widget.hbCount;
-  //   }
-  // }
 
   Future<void> _loadData() async {
     try {
@@ -78,14 +59,13 @@ class _PotatoScreenState extends State<PotatoScreen> {
         fellowFarmers = farmers
             .where((f) => f.isFollowing)
             .map((f) => {
-              'userId': f.userId,
-              'name': f.name,
-              'avatarUrl': f.avatarUrl,
-            })
+          'userId': f.userId,
+          'name': f.name,
+          'avatarUrl': f.avatarUrl,
+        })
             .toList();
       });
     } catch (e) {
-      // 에러 핸들링 (스낵바 등)
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('추천 농부 불러오기 실패: $e')),
@@ -118,7 +98,6 @@ class _PotatoScreenState extends State<PotatoScreen> {
       await _potatoService.followFarmer(farmer.userId);
 
       setState(() {
-        // fellowFarmers 업데이트
         final exists = fellowFarmers.any((f) => f['userId'] == farmer.userId);
         if (!exists) {
           fellowFarmers.add({
@@ -128,7 +107,6 @@ class _PotatoScreenState extends State<PotatoScreen> {
           });
         }
 
-        // recommendedFarmers 안의 isFollowing도 true로 바꿔주기
         recommendedFarmers = recommendedFarmers.map((f) {
           if (f.userId == farmer.userId) {
             return FarmerSummary(
@@ -185,8 +163,8 @@ class _PotatoScreenState extends State<PotatoScreen> {
 
   void _scrollLeft() {
     if (_mateCtrl.hasClients) {
-      final next = (_mateCtrl.offset - 80)
-          .clamp(0.0, _mateCtrl.position.maxScrollExtent);
+      final next =
+      (_mateCtrl.offset - 80).clamp(0.0, _mateCtrl.position.maxScrollExtent);
       _mateCtrl.animateTo(
         next,
         duration: const Duration(milliseconds: 160),
@@ -197,8 +175,8 @@ class _PotatoScreenState extends State<PotatoScreen> {
 
   void _scrollRight() {
     if (_mateCtrl.hasClients) {
-      final next = (_mateCtrl.offset + 80)
-          .clamp(0.0, _mateCtrl.position.maxScrollExtent);
+      final next =
+      (_mateCtrl.offset + 80).clamp(0.0, _mateCtrl.position.maxScrollExtent);
       _mateCtrl.animateTo(
         next,
         duration: const Duration(milliseconds: 160),
@@ -209,23 +187,20 @@ class _PotatoScreenState extends State<PotatoScreen> {
 
   /// 교환하기 → fight_setting.dart 열기
   Future<void> _openFightSetting(HashSummary hash) async {
-    
     final String habitTitle = hash.title;
     final int baseDifficulty = hash.difficulty;
-
     final int targetHabitId = hash.hashId;
-
     final String defaultDeadline = hash.deadline;
-    final CertType defaultCertType = hash.certType; // 인증 방식(수정 불가)
+    final CertType defaultCertType = hash.certType;
 
     final result = await Navigator.push<HabitSetupData>(
       context,
       MaterialPageRoute(
         builder: (_) => FightSettingPage(
-          targetTitle: habitTitle,              // ✅ 새 생성자 이름
-          initialDifficulty: baseDifficulty,    // ✅ 난이도 기본값
-          initialCertType: defaultCertType,     // ✅ 인증 방식
-          initialDeadline: defaultDeadline,     // ✅ 기본 마감 시간
+          targetTitle: habitTitle,
+          initialDifficulty: baseDifficulty,
+          initialCertType: defaultCertType,
+          initialDeadline: defaultDeadline,
         ),
       ),
     );
@@ -244,14 +219,126 @@ class _PotatoScreenState extends State<PotatoScreen> {
     }
   }
 
+  /// 동료 농부 프로필 탭 시: 그 농부의 만든 해시 브라운 보기
+  /// 동료 농부 프로필 탭 시: 그 농부의 만든 해시 브라운 보기
+  void _showFarmerHashes(int userId) {
+    FarmerSummary? farmer;
+    for (final f in recommendedFarmers) {
+      if (f.userId == userId) {
+        farmer = f;
+        break;
+      }
+    }
+
+    if (farmer == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이 농부의 정보가 아직 없어요.')),
+      );
+      return;
+    }
+
+    final int hb = HbState.instance.hb.value;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFFFFF2DD),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      isScrollControlled: true,
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 18,
+              bottom: 30,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 🔹 제목 + 팔로우 취소 버튼
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${farmer!.name} 님의 만든 해시브라운',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (farmer!.isFollowing)
+                        InkWell(
+                          onTap: () async {
+                            await _handleUnfollow(farmer!);
+                            Navigator.pop(context); // 바텀시트만 닫기
+                          },
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              // 위 카드의 팔로잉 버튼이랑 비슷한 스타일
+                              color: const Color(0xFFBAD3EC),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              '팔로우 취소',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+                  _MadeHashBrownBox(
+                    hashes: farmer!.hashes,
+                    myHb: hb,
+                    onExchangeHash: (hash) {
+                      Navigator.pop(context);
+                      _openFightSetting(hash);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: HbState.instance.hb,
       builder: (_, hb, __) {
         final bool isSearching = _searchKeyword.trim().isNotEmpty;
-        final visibleFarmers =
+
+        // 기본: 검색 중이면 검색 결과, 아니면 전체
+        var visibleFarmers =
         isSearching ? _filterByKeyword(_searchKeyword) : recommendedFarmers;
+
+        // 추천 농부: 검색 안 할 때는 "팔로우 안 된 농부" 중에서 3명만
+        if (!isSearching) {
+          final notFollowing =
+          recommendedFarmers.where((f) => !f.isFollowing).toList();
+          if (notFollowing.length > 3) {
+            visibleFarmers = notFollowing.sublist(0, 3);
+          } else {
+            visibleFarmers = notFollowing;
+          }
+        }
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -260,16 +347,148 @@ class _PotatoScreenState extends State<PotatoScreen> {
               constraints: const BoxConstraints(maxWidth: 540),
               child: CustomScrollView(
                 slivers: [
-                  // 상단바
                   SliverToBoxAdapter(
-                    child: _PotatoTopBar(hbCount: hb),   // ✅ _hb 대신 hb 사용
+                    child: _PotatoTopBar(hbCount: hb),
                   ),
 
                   const SliverToBoxAdapter(child: _PotatoHeaderWrapper()),
                   const SliverToBoxAdapter(child: SizedBox(height: 18)),
 
-                  // ... (중간 내용 그대로)
+                  // 동료 농부 캐러셀
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '동료 농부',
+                            style: TextStyle(
+                              color: AppColors.dark,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            height: 100,
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  left: 46,
+                                  right: 46,
+                                  child: ListView.separated(
+                                    controller: _mateCtrl,
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: fellowFarmers.length < 4
+                                        ? 4
+                                        : fellowFarmers.length,
+                                    separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 14),
+                                    itemBuilder: (context, index) {
+                                      // 빈 칸
+                                      if (index >= fellowFarmers.length) {
+                                        return Column(
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                          children: [
+                                            Container(
+                                              width: 58,
+                                              height: 58,
+                                              decoration: const BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: Color(0xFFD9D9D9),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            const SizedBox(
+                                              width: 60,
+                                              height: 12,
+                                            ),
+                                          ],
+                                        );
+                                      }
 
+                                      final farmer = fellowFarmers[index];
+                                      final int userId =
+                                      farmer['userId'] as int;
+
+                                      return GestureDetector(
+                                        onTap: () =>
+                                            _showFarmerHashes(userId),
+                                        child: Column(
+                                          mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                          children: [
+                                            _ProfileCircle(
+                                              size: 58,
+                                              avatarPath: farmer['avatarUrl']
+                                              as String?,
+                                            ),
+                                            const SizedBox(height: 6),
+                                            SizedBox(
+                                              width: 60,
+                                              child: Text(
+                                                farmer['name'] ?? '',
+                                                overflow: TextOverflow.ellipsis,
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                    fontSize: 11),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 0,
+                                  top: 30,
+                                  child: _CircleArrow(
+                                    icon: Icons.arrow_back,
+                                    onTap: _scrollLeft,
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 0,
+                                  top: 30,
+                                  child: _CircleArrow(
+                                    icon: Icons.arrow_forward,
+                                    onTap: _scrollRight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 30)),
+
+                  // 검색 박스
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _SearchBox(
+                        onSearch: (keyword) {
+                          setState(() {
+                            _searchKeyword = keyword;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: isSearching ? 22 : 90,
+                    ),
+                  ),
+
+                  // 추천 농부 카드들
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -286,8 +505,6 @@ class _PotatoScreenState extends State<PotatoScreen> {
                             const SizedBox(height: 55),
                             itemBuilder: (context, index) {
                               final data = visibleFarmers[index];
-                              final isFollowing = fellowFarmers
-                                  .any((f) => f['userId'] == data.userId);
                               return _FarmerCard(
                                 name: data.name,
                                 bio: data.bio,
@@ -295,10 +512,11 @@ class _PotatoScreenState extends State<PotatoScreen> {
                                 hashes: data.hashes,
                                 avatarPath: data.avatarUrl,
                                 isFollowing: data.isFollowing,
-                                myHb: hb,                   // ✅ 여기도 hb 사용
+                                myHb: hb,
                                 onFollow: () => _handleFollow(data),
                                 onUnfollow: () => _handleUnfollow(data),
-                                onExchangeHash: (hash) => _openFightSetting(hash),
+                                onExchangeHash: (hash) =>
+                                    _openFightSetting(hash),
                               );
                             },
                           ),
@@ -314,16 +532,15 @@ class _PotatoScreenState extends State<PotatoScreen> {
           bottomNavigationBar: _PotatoBottomBar(
             index: 0,
             onChanged: (i) {
-              if (i == 0) return; // 현재 탭
+              if (i == 0) return;
               if (i == 1) {
-                // 해시내기로 갈 때도 전역 hb 값 사용
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => HashScreen(
                       hbCount: hb,
                       onHbChanged: (v) async {
-                        await HbState.instance.setBalance(v); // ✅ 공용 상태 반영
+                        await HbState.instance.setBalance(v);
                       },
                     ),
                   ),
@@ -337,7 +554,6 @@ class _PotatoScreenState extends State<PotatoScreen> {
       },
     );
   }
-
 }
 
 /// =========================
@@ -364,7 +580,6 @@ class _PotatoTopBar extends StatelessWidget implements PreferredSizeWidget {
       leading: Padding(
         padding: const EdgeInsets.only(left: 6, top: 10),
         child: InkWell(
-          // 무조건 홈으로
           onTap: () {
             Navigator.pushNamedAndRemoveUntil(
               context,
@@ -409,10 +624,10 @@ class _PotatoTopBar extends StatelessWidget implements PreferredSizeWidget {
           icon: Image.asset(AppImages.cart, width: 22, height: 22),
           onPressed: () async {
             Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder:  (_) => ShoppingScreen(),
-                ),
+              context,
+              MaterialPageRoute(
+                builder: (_) => ShoppingScreen(),
+              ),
             );
             await HbState.instance.refreshFromServer();
           },
@@ -494,29 +709,51 @@ class _ProfileCircle extends StatelessWidget {
   const _ProfileCircle({
     required this.size,
     this.avatarPath,
+    this.showCommunityFallback = false,
   });
 
   final double size;
   final String? avatarPath;
+  final bool showCommunityFallback;
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = avatarPath != null &&
-        avatarPath!.isNotEmpty;
+    // 서버가 넘겨준 값이 devnone 같은 가짜 도메인이면 이미지 없는 걸로 취급
+    final String? raw = avatarPath?.trim();
+    final bool hasValidImage =
+        raw != null && raw.isNotEmpty && !raw.contains('devnone');
+
+    ImageProvider? provider;
+    if (hasValidImage) {
+      final path = raw!;
+      if (path.startsWith('http')) {
+        provider = NetworkImage(path);
+      } else {
+        provider = NetworkImage('$kBaseUrl$path');
+      }
+    }
 
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-      ),
+      decoration: const BoxDecoration(shape: BoxShape.circle),
       child: ClipOval(
-        child: hasImage
-            ? Image.network(
-          '$kBaseUrl${avatarPath!}',
+        child: provider != null
+            ? Image(
+          image: provider,
           fit: BoxFit.cover,
+          // 네트워크 실패 시에도 기본 이미지로
+          errorBuilder: (context, error, stackTrace) {
+            return Image.asset(
+              'lib/assets/image1/gamja1.png',
+              fit: BoxFit.cover,
+            );
+          },
         )
-            : Container(color: const Color(0xFFDADADA),
+            : Image.asset(
+          // 유효한 이미지가 없으면 기본 이미지
+          'lib/assets/image1/gamja1.png',
+          fit: BoxFit.cover,
         ),
       ),
     );
@@ -662,7 +899,7 @@ class _FarmerCard extends StatelessWidget {
     required this.onUnfollow,
     required this.onFollow,
     required this.onExchangeHash,
-    required this.myHb
+    required this.myHb,
   });
 
   final String name;
@@ -678,12 +915,20 @@ class _FarmerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ 여기서 최대 3개만 보여주도록 슬라이스
+    final List<HashSummary> visibleHashes =
+    hashes.length > 3 ? hashes.sublist(0, 3) : hashes;
+
     return Column(
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _ProfileCircle(size: 58, avatarPath: avatarPath),
+            _ProfileCircle(
+              size: 58,
+              avatarPath: avatarPath,
+              showCommunityFallback: true,
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -703,7 +948,8 @@ class _FarmerCard extends StatelessWidget {
                         onTap: isFollowing ? onUnfollow : onFollow,
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: isFollowing
                                 ? const Color(0xFFBAD3EC)
@@ -740,7 +986,8 @@ class _FarmerCard extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         _MadeHashBrownBox(
-          hashes: hashes,
+          // ✅ 여기서 잘라 넣기
+          hashes: visibleHashes,
           myHb: myHb,
           onExchangeHash: onExchangeHash,
         ),
@@ -749,8 +996,8 @@ class _FarmerCard extends StatelessWidget {
   }
 }
 
-class _MadeHashBrownBox extends StatelessWidget {
 
+class _MadeHashBrownBox extends StatelessWidget {
   const _MadeHashBrownBox({
     required this.hashes,
     required this.myHb,
@@ -791,7 +1038,8 @@ class _MadeHashBrownBox extends StatelessWidget {
             left: 14,
             top: -10,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8E8B2),
                 border: Border.all(color: Colors.black87, width: 0.8),
@@ -835,9 +1083,8 @@ class _MadeHashRow extends StatelessWidget {
     final Color chipTextColor =
     disabled ? Colors.black45 : Colors.black87;
 
-    final Color buttonBg = disabled
-        ? const Color(0xFFE5E5E5)
-        : const Color(0xFF9A9C06);
+    final Color buttonBg =
+    disabled ? const Color(0xFFE5E5E5) : const Color(0xFF9A9C06);
     final Color buttonTextColor =
     disabled ? Colors.grey[700]! : Colors.white;
 
@@ -845,7 +1092,6 @@ class _MadeHashRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
         children: [
-          // 감자 아이콘
           Image.asset(
             'lib/assets/image1/mini_hash.png',
             width: 24,
@@ -853,8 +1099,6 @@ class _MadeHashRow extends StatelessWidget {
             fit: BoxFit.contain,
           ),
           const SizedBox(width: 8),
-
-          // 제목 + 난이도 칩을 한 줄에 붙여서
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -865,15 +1109,15 @@ class _MadeHashRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w400, // 더 얇게
+                      fontWeight: FontWeight.w400,
                       color: titleColor,
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: chipBg,
                     borderRadius: BorderRadius.circular(14),
@@ -884,7 +1128,7 @@ class _MadeHashRow extends StatelessWidget {
                       Text(
                         '난이도: $difficulty',
                         style: TextStyle(
-                          fontSize: 10, // 더 작게
+                          fontSize: 10,
                           fontWeight: FontWeight.w400,
                           color: chipTextColor,
                         ),
@@ -900,24 +1144,21 @@ class _MadeHashRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                if(disabled)
+                if (disabled)
                   const Padding(
-                      padding: EdgeInsets.only(left: 4),
-                      child: Text(
-                          '해시 부족',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.redAccent,
-                          ),
+                    padding: EdgeInsets.only(left: 4),
+                    child: Text(
+                      '해시 부족',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.redAccent,
                       ),
+                    ),
                   )
               ],
             ),
           ),
-
           const SizedBox(width: 8),
-
-          // 교환하기 버튼
           SizedBox(
             height: 28,
             child: ElevatedButton(
@@ -925,19 +1166,19 @@ class _MadeHashRow extends StatelessWidget {
                 backgroundColor: buttonBg,
                 foregroundColor: buttonTextColor,
                 elevation: 0,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              onPressed: (){
-                if(disabled) {
+              onPressed: () {
+                if (disabled) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content : Text('보유 해시가 부족해서 교환할 수 없어요.'),
-                      ),
-                    );
+                    const SnackBar(
+                      content: Text('보유 해시가 부족해서 교환할 수 없어요.'),
+                    ),
+                  );
                   return;
                 }
                 onExchange();
@@ -962,7 +1203,8 @@ class _Tag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(right: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding:
+      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: const Color(0xFFF2C94C),
         borderRadius: BorderRadius.circular(12),
@@ -1018,13 +1260,11 @@ class _BottomItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 👉 순서: 감자캐기 / 해시내기 / 홈화면(HB) / 알림 / 마이페이지
     const labels = ['감자캐기', '해시내기', '홈화면', '알림', '마이페이지'];
 
-    // 각 인덱스별 아이콘
     Widget icon;
     switch (index) {
-      case 0: // 감자캐기
+      case 0:
         icon = Image.asset(
           AppImages.bottomDig,
           width: 32,
@@ -1032,7 +1272,7 @@ class _BottomItem extends StatelessWidget {
           fit: BoxFit.contain,
         );
         break;
-      case 1: // 해시내기
+      case 1:
         icon = Image.asset(
           AppImages.bottomHash,
           width: 35,
@@ -1048,7 +1288,7 @@ class _BottomItem extends StatelessWidget {
           fit: BoxFit.contain,
         );
         break;
-      case 3: // 알림
+      case 3:
         icon = Image.asset(
           AppImages.alarm,
           width: 33,
@@ -1056,7 +1296,7 @@ class _BottomItem extends StatelessWidget {
           fit: BoxFit.contain,
         );
         break;
-      case 4: // 마이페이지
+      case 4:
       default:
         icon = Image.asset(
           AppImages.bottomMyPage,
@@ -1112,4 +1352,3 @@ class _BottomItem extends StatelessWidget {
     );
   }
 }
-

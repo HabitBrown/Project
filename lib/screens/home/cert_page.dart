@@ -6,6 +6,7 @@ import 'habit_setting.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import '../../services/certification_service.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 class CertPage extends StatefulWidget {
   const CertPage({
@@ -24,7 +25,6 @@ class CertPage extends StatefulWidget {
   final String nickname;
   final String? deadline;
   final HabitSetupData? setup;
-
 
   @override
   State<CertPage> createState() => _CertPageState();
@@ -47,6 +47,21 @@ class _CertPageState extends State<CertPage> {
         _isTextFilled = _controller.text.trim().isNotEmpty;
       });
     });
+  }
+
+  // ✅ 추가된 압축 함수
+  Future<File> _compressImage(XFile xfile) async {
+    final String targetPath = '${xfile.path}_compressed.jpg';
+
+    final compressed = await FlutterImageCompress.compressAndGetFile(
+      xfile.path,
+      targetPath,
+      quality: 50,
+      minWidth: 900,
+      minHeight: 900,
+    );
+
+    return File(compressed?.path ?? xfile.path);
   }
 
   @override
@@ -78,7 +93,6 @@ class _CertPageState extends State<CertPage> {
                     _thinkingBubble(habitTitle),
                     const SizedBox(height: 26),
 
-                    // 닉네임 줄
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 40),
                       child: Align(
@@ -95,7 +109,6 @@ class _CertPageState extends State<CertPage> {
                     ),
                     const SizedBox(height: 12),
 
-                    // 갈색 정보 박스
                     Center(
                       child: Container(
                         width: 280,
@@ -126,9 +139,8 @@ class _CertPageState extends State<CertPage> {
                     ),
                     const SizedBox(height: 24),
 
-                    // ✅ 여기서 방식에 따라 분기
                     if (method == 'photo')
-                      _photoCertSection(context)   // ← 새로 만든 위젯
+                      _photoCertSection(context)
                     else
                       _textForm(context),
                   ],
@@ -141,7 +153,6 @@ class _CertPageState extends State<CertPage> {
     );
   }
 
-  // 🔙 상단 뒤로가기
   Widget _backOnlyTopBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
@@ -160,7 +171,6 @@ class _CertPageState extends State<CertPage> {
     );
   }
 
-  // 💭 감자가 생각하는 말풍선
   Widget _thinkingBubble(String habitTitle) {
     return SizedBox(
       height: 250,
@@ -222,7 +232,6 @@ class _CertPageState extends State<CertPage> {
     );
   }
 
-  // 🟤 갈색 정보 박스 내부 텍스트
   Widget _buildInfoBox(HabitSetupData? setup, String method, String? deadline) {
     if (setup != null) {
       final s = setup;
@@ -238,7 +247,8 @@ class _CertPageState extends State<CertPage> {
           Text('· ${_toKoreanTime(s.deadline)} 까지',
               style: const TextStyle(color: Colors.white, fontSize: 13)),
           const SizedBox(height: 4),
-          Text(s.certType == CertType.photo ? '· 사진으로' : '· 글로',
+          Text(
+              s.certType == CertType.photo ? '· 사진으로' : '· 글로',
               style: const TextStyle(color: Colors.white, fontSize: 13)),
         ],
       );
@@ -250,7 +260,7 @@ class _CertPageState extends State<CertPage> {
         const Text('· 매일', style: TextStyle(color: Colors.white, fontSize: 13)),
         const SizedBox(height: 4),
         const Text('· 오늘부터 계속',
-            style: TextStyle(color: Colors.white, fontSize: 13)),
+            style: const TextStyle(color: Colors.white, fontSize: 13)),
         const SizedBox(height: 4),
         Text('· ${_toKoreanTime(deadline ?? "23:59")} 까지',
             style: const TextStyle(color: Colors.white, fontSize: 13)),
@@ -261,9 +271,9 @@ class _CertPageState extends State<CertPage> {
     );
   }
 
-  // 사진 인증 섹션 (버튼 + 미리보기 + 업로드)
-  // 사진 인증 섹션 (수정 버전)
-// 사진 인증 섹션
+  // =============================
+  // 📸 사진 인증 UI
+  // =============================
   Widget _photoCertSection(BuildContext context) {
     final hasImage = _pickedImage != null;
 
@@ -272,7 +282,6 @@ class _CertPageState extends State<CertPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1) 사진 없을 때: 가운데 큰 첨부 버튼
           if (!hasImage)
             Center(
               child: GestureDetector(
@@ -285,7 +294,6 @@ class _CertPageState extends State<CertPage> {
               ),
             ),
 
-          // 2) 사진 선택되어 있을 때
           if (hasImage) ...[
             Container(
               clipBehavior: Clip.antiAlias,
@@ -300,33 +308,24 @@ class _CertPageState extends State<CertPage> {
                 ],
               ),
               child: kIsWeb
-                  ? Image.network(
-                      _pickedImage!.path,
-                      fit: BoxFit.cover,
-                    )
-                  : Image.file(
-                      File(_pickedImage!.path),
-                      fit: BoxFit.cover,
-                    ),
+                  ? Image.network(_pickedImage!.path, fit: BoxFit.cover)
+                  : Image.file(File(_pickedImage!.path), fit: BoxFit.cover),
             ),
             const SizedBox(height: 18),
 
-            // 3) 업로드 + 사진 교체
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
                   onPressed: _pickImage,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    minimumSize: const Size(0, 0),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: const Color(0xFF535353),
-                  ),
-                  child: const Text('사진 교체하기', style: TextStyle(fontSize: 12)),
+                  child: const Text('사진 교체하기',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF535353))),
                 ),
                 const SizedBox(width: 8),
 
+                // =============================
+                // 💛 업로드 버튼 (압축 적용)
+                // =============================
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF3C34E),
@@ -336,26 +335,30 @@ class _CertPageState extends State<CertPage> {
                     elevation: 0,
                   ),
                   onPressed: () async {
+                    if (_pickedImage == null) return;
+
                     try {
-                      // 1) 로컬 파일 객체로 변환
-                      final file = File(_pickedImage!.path);
+                      // 1) 압축 적용
+                      final File compressedFile =
+                      await _compressImage(_pickedImage!);
 
-                      // 2) 사진 업로드 → photo_asset_id 받기
-                      final photoId = await _certService.uploadPhoto(file);
+                      // 2) 서버에 업로드
+                      final photoId =
+                      await _certService.uploadPhoto(compressedFile);
 
-                      // 3) photo_asset_id 로 인증 생성
+                      // 3) 인증 요청
                       await _certService.createPhotoCertification(
                         userHabitId: widget.userHabitId,
                         photoAssetId: photoId,
                       );
 
-                      // 4) 성공 → 홈 화면에 true 전달
                       Navigator.pop(context, true);
                     } catch (e) {
                       print('사진 인증 실패: $e');
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('사진 인증에 실패했어요. 다시 시도해주세요.'),
+                          content:
+                          Text('사진 인증에 실패했어요. 다시 시도해주세요.'),
                         ),
                       );
                     }
@@ -379,8 +382,9 @@ class _CertPageState extends State<CertPage> {
     );
   }
 
-
-  // ✅ 실제로 사진 고르는 메서드 (bottom sheet 그대로 살림)
+  // =============================
+  // 사진 고르기
+  // =============================
   Future<void> _pickImage() async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -398,8 +402,7 @@ class _CertPageState extends State<CertPage> {
                 onTap: () => Navigator.pop(ctx, 'camera'),
               ),
               ListTile(
-                leading:
-                const Icon(Icons.photo_library, color: Colors.brown),
+                leading: const Icon(Icons.photo_library, color: Colors.brown),
                 title: const Text('갤러리에서 선택하기'),
                 onTap: () => Navigator.pop(ctx, 'gallery'),
               ),
@@ -420,12 +423,14 @@ class _CertPageState extends State<CertPage> {
 
     if (picked != null) {
       setState(() {
-        _pickedImage = picked;    // ← 화면에 보여주기만 하고 닫지 않음
+        _pickedImage = picked;
       });
     }
   }
 
-  // 글 인증 (기존 그대로)
+  // =============================
+  // 글 인증
+  // =============================
   Widget _textForm(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 26),
@@ -462,20 +467,22 @@ class _CertPageState extends State<CertPage> {
               ),
               onPressed: _isTextFilled
                   ? () async {
-                  try {
-                    await _certService.createTextCertification(
-                      userHabitId: widget.userHabitId,
-                      textContent: _controller.text.trim(),
-                    );
-                    Navigator.pop(context, true);
-                  } catch (e) {
-                    print('인증 실패: $e');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('인증에 실패했어요. 다시 시도해주세요.')),
-                      );
-                    }
-                  }
+                try {
+                  await _certService.createTextCertification(
+                    userHabitId: widget.userHabitId,
+                    textContent: _controller.text.trim(),
+                  );
+                  Navigator.pop(context, true);
+                } catch (e) {
+                  print('인증 실패: $e');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                      Text('인증에 실패했어요. 다시 시도해주세요.'),
+                    ),
+                  );
+                }
+              }
                   : null,
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 15, vertical: 8),
@@ -494,7 +501,9 @@ class _CertPageState extends State<CertPage> {
     );
   }
 
-  // 유틸 함수들
+  // =============================
+  // 기타 유틸 함수들
+  // =============================
   String _toKoreanTime(String hm) {
     final parts = hm.split(':');
     if (parts.length != 2) return hm;
