@@ -101,9 +101,7 @@ class CertificationService {
 
   Future<Set<int>> fetchTodayCertifiedHabitIds() async {
     final token = await _getAccessToken();
-    if (token == null) {
-      throw Exception("로그인 토큰이 없습니다.");
-    }
+    if (token == null) throw Exception("로그인 토큰이 없습니다.");
 
     final uri = Uri.parse('$kBaseUrl/certifications/today/habits');
 
@@ -114,13 +112,47 @@ class CertificationService {
       },
     );
 
-    if (resp.statusCode != 200) {
-      throw Exception(
-          "오늘 인증한 습관 조회 실패: ${resp.statusCode} ${resp.body}");
+    // 1) 클라이언트 시간 (KST / UTC)
+    final nowLocal = DateTime.now();
+    final nowUtc = DateTime.now().toUtc();
+
+    // 2) 서버 시간 (HTTP Date 헤더)
+    final serverDateHeader = resp.headers['date'];
+    DateTime? serverNow;
+    if (serverDateHeader != null) {
+      try {
+        serverNow = HttpDate.parse(serverDateHeader); // dart:io
+      } catch (e) {
+        print('⚠ server date parse error: $e / header=$serverDateHeader');
+      }
     }
 
+    // 3) 로그 출력
+    print('===== [CertificationService] /today/habits =====');
+    print('client now local : $nowLocal');
+    print('client now UTC   : $nowUtc');
+
+    if (serverNow != null) {
+      print('server now (UTC): $serverNow');
+      print('server-client diff (UTC): ${serverNow.difference(nowUtc)}');
+    } else {
+      print('server date header NOT FOUND');
+    }
+
+    if (resp.statusCode != 200) {
+      print('resp.body = ${resp.body}');
+      throw Exception("오늘 인증한 습관 조회 실패: ${resp.statusCode} ${resp.body}");
+    }
+
+    print('todayCertified raw: ${resp.body}');
+
     final data = jsonDecode(resp.body) as List<dynamic>;
-    // [1, 3, 7] 이런 리스트라고 가정
-    return data.map((e) => e as int).toSet();
-  }
-}
+    final ids = data.map((e) => e as int).toSet();
+
+    print('todayCertified ids: $ids');
+    print('================================================');
+
+    return ids;
+  }}
+
+

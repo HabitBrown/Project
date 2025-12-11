@@ -149,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Timer? _tick;
+  late DateTime _todayDate;
 
   String nickname = '망설이는 감자';
   String honorific = '농부님!';
@@ -199,9 +200,28 @@ class _HomeScreenState extends State<HomeScreen> {
     _today = [];
     _fighting = [];
 
+    // 🔥 오늘 날짜 저장
+    final now = DateTime.now();
+    _todayDate = DateTime(now.year, now.month, now.day);
+
     // 1분마다 화면 갱신 (마감시간 체크 등)
-    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) setState(() {});
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) async {
+      if (!mounted) return;
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      // 날짜가 바뀌었으면
+      if (today.isAfter(_todayDate)) {
+        _todayDate = today;
+        try {
+          await _loadHomeSummary();   // 🔁 서버에서 오늘 기준으로 다시 불러오기
+        } catch (_) {
+          if (mounted) setState(() {}); // 실패하면 일단 화면만 갱신
+        }
+      } else {
+        setState(() {}); // 그대로라면 그냥 재빌드만
+      }
     });
 
     // ===== 추가: 유저 정보 & 홈 요약 불러오기 =====
@@ -303,6 +323,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // 오프라인이거나 서버 에러면 그냥 조용히 패쓰
     }
   }
+
+
 
   // ===== 홈 요약 불러오기 (/home/summary) =====
   Future<void> _loadHomeSummary() async {
@@ -1300,10 +1322,6 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     const skipBg = Color(0xFFE0E0E0);
     const certBg = Color(0xFFF3BA37);
-
-    if (h.certifiedToday && h.status == HabitStatus.pending) {
-      h.status = HabitStatus.verified;
-    }
 
     final expired = _isExpired(h);
 

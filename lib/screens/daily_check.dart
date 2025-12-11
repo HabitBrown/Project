@@ -37,47 +37,51 @@ Future<void> showDailyCheckDialog(
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
 
-  // 저장된 값 불러오기 (유저별)
+  // 1) 저장된 값 읽기
   final lastDateStr = prefs.getString(_lastDateKey(userId));
   _streak = prefs.getInt(_streakKey(userId)) ?? 0;
   _checkedToday = prefs.getBool(_checkedTodayKey(userId)) ?? false;
 
+  // 🔵 사이클 시작일 읽기 (없으면 today로 기본값)
+  DateTime cycleStartDate = today;
+  final cycleStartStr = prefs.getString(_cycleStartDateKey(userId));
+  if (cycleStartStr != null) {
+    cycleStartDate = DateTime.parse(cycleStartStr);
+  }
+
   if (lastDateStr == null) {
-    // 첫 실행
-    _lastCheckDate = today;
+    // 출석 기록이 전혀 없던 유저
+    _lastCheckDate = null;
     _checkedToday = false;
     _streak = 0;
+    cycleStartDate = today; // 🔵 첫 사이클 시작을 오늘로
   } else {
     final last = DateTime.parse(lastDateStr);
 
-    // 날짜가 바뀌었으면 새로운 하루로 리셋 조건 체크
     if (!_isSameDay(last, today)) {
       final bool wasYesterday = _isYesterday(last, today);
 
       // 어제가 아니면 -> 끊긴 거니까 streak = 0
-      // 어제이긴 한데 이미 7일까지 채웠으면 -> 새 사이클 시작 위해 streak = 0
+      // (7일 채운 뒤 새 사이클 시작도 여기에서)
       if (!wasYesterday || _streak >= 7) {
         _streak = 0;
-        // 필요하면 여기서 사이클 시작일 초기화도 가능
-        // await prefs.remove(_cycleStartDateKey(userId));
+        cycleStartDate = today; // 🔵 새 사이클 시작을 오늘로
       }
 
       _checkedToday = false;
       _lastCheckDate = today;
     } else {
       _lastCheckDate = last;
+      // 🔵 같은 날이면 cycleStartDate는 위에서 읽어온 값을 그대로 사용
     }
   }
 
-  // 계산된 상태를 저장 (유저별)
-  await prefs.setString(_lastDateKey(userId), _formatDate(today));
-  await prefs.setInt(_streakKey(userId), _streak);
-  await prefs.setBool(_checkedTodayKey(userId), _checkedToday);
+  // ✅ 여기서는 더 이상 아무것도 저장하지 않음
+  // (출석하기 버튼을 눌렀을 때만 저장)
 
-  // 이미 오늘 출석했으면 팝업 안 띄움
+  // 오늘 이미 출석한 상태면 팝업 안 띄우기
   if (_checkedToday) return;
 
-  // 오늘 처음 앱 실행 + 아직 출석 안 했을 때만 팝업
   await showDialog(
     context: context,
     barrierDismissible: false,
@@ -85,10 +89,19 @@ Future<void> showDailyCheckDialog(
       return _DailyCheckPopup(
         streak: _streak,
         today: today,
+        cycleStartDate: cycleStartDate, // 🔵 추가
         onAttend: () async {
-          // 오늘 출석 처리 (로컬 기준)
+          // ✅ 실제로 "출석하기" 버튼을 눌렀을 때만
+          // 날짜 + 스트릭 + 오늘 출석 여부를 저장
           _checkedToday = true;
           _streak += 1;
+          _lastCheckDate = today;
+
+          // 마지막 출석 날짜 저장
+          await prefs.setString(
+            _lastDateKey(userId),
+            _formatDate(today),
+          );
 
           // 이번 7일 사이클의 "1일차"가 되는 순간, 시작일 저장
           if (_streak == 1) {
@@ -97,8 +110,15 @@ Future<void> showDailyCheckDialog(
               _formatDate(today),
             );
           }
-          await prefs.setBool(_checkedTodayKey(userId), _checkedToday);
-          await prefs.setInt(_streakKey(userId), _streak);
+
+          await prefs.setBool(
+            _checkedTodayKey(userId),
+            _checkedToday,
+          );
+          await prefs.setInt(
+            _streakKey(userId),
+            _streak,
+          );
         },
         onHbUpdated: onHbUpdated,
       );
@@ -118,6 +138,7 @@ String _formatDate(DateTime d) =>
 class _DailyCheckPopup extends StatefulWidget {
   final int streak;
   final DateTime today;
+  final DateTime cycleStartDate;                 // 🔵 추가
   final Future<void> Function() onAttend;
   final void Function(int newHb)? onHbUpdated;
 
@@ -125,6 +146,7 @@ class _DailyCheckPopup extends StatefulWidget {
     super.key,
     required this.streak,
     required this.today,
+    required this.cycleStartDate,               // 🔵 추가
     required this.onAttend,
     this.onHbUpdated,
   });
@@ -138,7 +160,7 @@ class _DailyCheckPopupState extends State<_DailyCheckPopup> {
 
   @override
   Widget build(BuildContext context) {
-    // 화면에서는 "오늘 찍을 칸까지" 보이도록 +1
+    // ✅ 화면에는 '오늘 찍을 칸까지' 보이도록 +1
     final int filledCount = (widget.streak + 1).clamp(1, 7);
 
     return Center(
@@ -151,6 +173,8 @@ class _DailyCheckPopupState extends State<_DailyCheckPopup> {
             color: const Color(0xFFFBE7C4),
             borderRadius: BorderRadius.circular(24),
           ),
+
+
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -243,8 +267,9 @@ class _DailyCheckPopupState extends State<_DailyCheckPopup> {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content:
-                            Text('출석 처리 중 오류가 발생했어요: $e'),
+                            content: Text(
+                              '출석 처리 중 오류가 발생했어요: $e',
+                            ),
                           ),
                         );
                       }
@@ -268,15 +293,15 @@ class _DailyCheckPopupState extends State<_DailyCheckPopup> {
   }
 
   Widget _buildStampGrid(int count) {
-    // 7칸: 오늘 ~ 6일 뒤까지 날짜 표시
+    // 🔵 7칸: 이번 사이클 시작일 기준으로 7일
     final List<Widget> boxes = List.generate(7, (i) {
-      final date = widget.today.add(Duration(days: i));
+      final date = widget.cycleStartDate.add(Duration(days: i));
       final dateLabel =
           '${date.month}/${date.day.toString().padLeft(2, '0')}';
 
       return _StampBox(
-        isFilled: i < count, // 채워진 칸인지
-        dateLabel: i < count ? dateLabel : null, // 채워진 칸만 날짜 보여줌
+        isFilled: i < count,                  // 🔵 streak만큼 채우기
+        dateLabel: i < count ? dateLabel : null,
       );
     });
 
