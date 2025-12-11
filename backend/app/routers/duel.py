@@ -80,15 +80,24 @@ def _forfeit_duel(
     challenger_user = db.get(User, duel.challenger_user_id)
     
     if owner_user is not None and challenger_user is not None:
+
+        owner_stake = duel.owner_stake
+        challenger_stake = duel.challenger_stake
+        
         # 패배자/승자 결정
         if loser_user_id == duel.owner_user_id:
-            winner_user = challenger_user
+            loser = owner_user
+            winner = challenger_user
+            winner_reward = challenger_stake * 2 + owner_stake
         else:
-            winner_user = owner_user
-
+            loser = challenger_user
+            winner = owner_user
+            winner_reward = owner_stake * 2 + challenger_stake
+        
         # 이미 둘 다 스테이크만큼 차감된 상태에서,
         # 승자에게 양쪽 스테이크(2배)를 지급 → 순이익 +stake
-        winner_user.hb_balance += stake * 2
+        
+        winner.hb_balance += winner_reward
         
     # duel에 연결된 user_habits 두 개 가져오기
     duel_habits: list[UserHabit] = (
@@ -176,20 +185,21 @@ def _finish_duel_both_end(
     challenger_user = db.get(User, duel.challenger_user_id)
 
     if owner_user is not None and challenger_user is not None:
+        
+        owner_stake = duel.owner_stake
+        challenger_stake = duel.challenger_stake
         # 1) 둘 다 성공
         if owner_status == "completed_success" and challenger_status == "completed_success":
-            owner_user.hb_balance += stake * 2
-            challenger_user.hb_balance += stake * 2
+            owner_user.hb_balance += owner_stake  * 2
+            challenger_user.hb_balance += challenger_stake  * 2
 
         # 2) 한쪽만 성공 (혹시 이 함수로 사용하는 경우 대비)
         elif owner_status == "completed_success" and challenger_status == "completed_fail":
-            owner_user.hb_balance += stake * 2
+            owner_user.hb_balance += owner_stake * 2 + challenger_stake
+       
         elif owner_status == "completed_fail" and challenger_status == "completed_success":
-            challenger_user.hb_balance += stake * 2
+            challenger_user.hb_balance += challenger_stake * 2 + owner_stake
 
-        # 3) 둘 다 실패면 아무도 돌려받지 않음
-        #    (owner_status == challenger_status == "completed_fail")
-        #    정책을 바꾸고 싶으면 여기에서 처리 추가하면 됨.
 
     duel_habits: list[UserHabit] = (
         db.query(UserHabit)
@@ -445,6 +455,9 @@ def create_duel_from_exchange(
 
     # 3-2) 두 유저의 현재 해시 잔액이 스테이크 이상인지 확인
     stake = payload.difficulty
+
+    challenger_stake = ex.difficulty           # 도전장 보낼 때 이미 선차감됨
+    owner_stake = opponent_uh.difficulty 
     
     owner_user = db.get(User, ex.to_user_id)
     challenger_user = db.get(User, ex.from_user_id)
@@ -511,6 +524,10 @@ def create_duel_from_exchange(
         days_of_week=days_mask,
         start_date=payload.start_date,
         end_date=payload.end_date,
+        
+        owner_stake=owner_stake,
+        challenger_stake=challenger_stake,
+        
         difficulty=payload.difficulty,
         status="active",
         created_at=now,
@@ -561,7 +578,7 @@ def create_duel_from_exchange(
         period_end=payload.end_date,
         is_active=True,
         created_at=now,
-        difficulty=payload.difficulty,
+        difficulty=owner_stake,
         status="active",
         duel_id=duel.id,
     )
@@ -579,7 +596,7 @@ def create_duel_from_exchange(
         period_end=payload.end_date,
         is_active=True,
         created_at=now,
-        difficulty=payload.difficulty,
+        difficulty=challenger_stake,
         status="active",
         duel_id=duel.id,
     )
@@ -587,7 +604,7 @@ def create_duel_from_exchange(
     db.add_all([owner_duel_habit, challenger_duel_habit])
 
     # 6-3) 내기 시작 시점에 양쪽 해시 차감
-    owner_user.hb_balance -= stake
+    owner_user.hb_balance -= owner_stake
     
     if owner_user.hb_balance < 0 or challenger_user.hb_balance < 0:
         # 이론상 위에서 다 체크해서 여기 오면 음수가 될 일이 없지만
